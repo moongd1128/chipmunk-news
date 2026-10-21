@@ -4,6 +4,7 @@
 """
 import asyncio
 import os
+import time
 from datetime import date
 
 from dotenv import load_dotenv
@@ -36,8 +37,15 @@ async def send_today(day: str) -> None:
         await app.shutdown()
 
 
+def _stage(name: str, started: float) -> float:
+    now = time.time()
+    print(f"\n⏱️ [{name}] {now - started:.0f}초\n", flush=True)
+    return now
+
+
 def main() -> None:
     day = date.today().isoformat()
+    t = time.time()
     state.ensure_bucket()
     state.pull()
     state.pull_bgm()
@@ -45,13 +53,17 @@ def main() -> None:
         publisher.refresh_token_if_old()
     except Exception as e:  # noqa: BLE001 - 토큰 연장이 실패해도 카드 만들기는 계속
         print(f"⚠️ 토큰 연장 중 오류: {e}")
+    t = _stage("준비", t)
 
     step1.main()
+    t = _stage("원고", t)
     if not bot.load_cards(day):
         asyncio.run(notify("🐿️ 오늘은 원고를 만들지 못했어요 (새 재료가 없거나 AI 한도 초과). 로그를 확인해 주세요."))
         return
     render.render(day)
+    t = _stage("카드 이미지", t)
     reels.make_all(day)
+    t = _stage("릴스", t)
     state.push()
     asyncio.run(notify("🌰 오늘의 칩다람 카드가 도착했어요! 버튼은 PC가 꺼져 있으면 몇 분 뒤에 반영돼요."))
     asyncio.run(send_today(day))

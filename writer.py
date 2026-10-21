@@ -1,6 +1,8 @@
 """1단계-2: Gemini로 기사 고르기 + 칩다람 카드뉴스 원고 쓰기"""
 import os
+import time
 
+import httpx
 from google import genai
 from google.genai import errors, types
 from pydantic import BaseModel
@@ -152,8 +154,13 @@ def _client() -> genai.Client:
     # 클라이언트를 매번 새로 만들면 바로 닫혀버려서 하나만 만들어 재사용한다
     global _CLIENT
     if _CLIENT is None:
-        _CLIENT = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+        # 요청 하나에 최대 2분: 구글 서버가 멈춘 듯 느릴 때 하염없이 기다리지 않고 다음 모델로 넘어간다
+        _CLIENT = genai.Client(api_key=os.environ["GEMINI_API_KEY"],
+                               http_options=types.HttpOptions(timeout=REQUEST_TIMEOUT_MS))
     return _CLIENT
+
+
+REQUEST_TIMEOUT_MS = 120_000
 
 
 def _models() -> list[str]:
@@ -166,22 +173,28 @@ def _models() -> list[str]:
 _exhausted: set[str] = set()
 
 
-def _generate(prompt: str | list, schema: type[BaseModel]):
+def _generate(prompt: str | list, schema: type[BaseModel], think: bool = False):
+    """think=False면 AI가 답하기 전에 '생각'하는 시간을 줄인다 (고르기·검사처럼 단순한 일은 2배 빨라짐).
+    원고 쓰기처럼 품질이 중요한 일만 think=True."""
+    extra = {} if think else {"thinking_config": types.ThinkingConfig(thinking_level="low")}
     for model in _models():
         if model in _exhausted:
             continue
+        started = time.time()
         try:
             resp = _client().models.generate_content(
                 model=model,
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    response_mime_type="application/json", response_schema=schema
+                    response_mime_type="application/json", response_schema=schema, **extra
                 ),
             )
+            print(f"   ⏱️ AI 응답 {time.time() - started:.0f}초 ({model})")
             return resp.parsed
-        except errors.ServerError as e:  # 구글 서버가 잠깐 바쁠 때 (503 등)
+        except (errors.ServerError, httpx.TimeoutException) as e:  # 구글 서버가 바쁘거나 2분 넘게 답이 없을 때
             _exhausted.add(model)
-            print(f"   ↪️ {model}: 서버 혼잡({e.code}) → 다음 모델로 전환")
+            why = f"서버 혼잡({e.code})" if isinstance(e, errors.ServerError) else "2분 넘게 응답 없음"
+            print(f"   ↪️ {model}: {why} → 다음 모델로 전환")
         except errors.ClientError as e:
             if e.code not in (404, 429):
                 raise
@@ -340,8 +353,8 @@ def revise_card(card: dict, problems: list[str]) -> CardNews:
 
 원고:
 {json.dumps(card, ensure_ascii=False, indent=1)}"""
-    return _generate_card(prompt)
+    return _generate_card(prompt, think=False)  # 지적받은 곳만 고치는 일이라 빠르게
 
 
-def _generate_card(prompt: str) -> CardNews:
-    return _generate(prompt, CardNews)
+def _generate_card(prompt: str, think: bool = True) -> CardNews:
+    return _generate(prompt, CardNews, think=think)

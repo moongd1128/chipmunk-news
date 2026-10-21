@@ -3,8 +3,14 @@ import json
 import time
 from pathlib import Path
 
+import socket
+
 import feedparser
+import requests
 import trafilatura
+
+# RSS 사이트가 응답 없이 멈춰 있어도 20초 뒤엔 포기하고 다음으로 (feedparser엔 시간 제한 옵션이 없어서)
+socket.setdefaulttimeout(20)
 
 RSS_URLS = {
     "TechCrunch": "https://techcrunch.com/category/artificial-intelligence/feed/",
@@ -65,7 +71,10 @@ def fetch_latest_news() -> list[dict]:
 
 
 def fetch_article_body(url: str, fallback: str = "") -> str:
-    """기사 본문을 가져온다. 실패하면 RSS 요약을 대신 쓴다."""
-    downloaded = trafilatura.fetch_url(url)
-    body = trafilatura.extract(downloaded) if downloaded else None
+    """기사 본문을 가져온다. 15초 안에 안 오거나 실패하면 RSS 요약을 대신 쓴다."""
+    try:
+        resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0 (chipmunk-news bot)"})
+        body = trafilatura.extract(resp.text) if resp.ok else None
+    except requests.RequestException:
+        body = None
     return (body or fallback)[:6000]

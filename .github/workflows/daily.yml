@@ -17,6 +17,7 @@ jobs:
     env:
       TZ: Asia/Seoul
       PYTHONIOENCODING: utf-8
+      PYTHONUNBUFFERED: "1"   # 진행 상황을 GitHub 화면에 바로바로 보여주기
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
       PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}

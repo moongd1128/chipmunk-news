@@ -27,7 +27,7 @@ PIXABAY_URL = "https://pixabay.com/api/"
 GEMINI_IMAGE_MODEL = "gemini-3.1-flash-image"
 # AI로 그릴 때 스타일 (캐릭터·글자 없이 주제만)
 IMAGE_STYLE = "editorial illustration, clean modern composition, vivid but tasteful colors, no characters or mascots, no text, no letters, no logos"
-PER_SEARCH = 6  # 검색 1번에 가져올 후보 수
+PER_SEARCH = 4  # 검색 1번에 가져올 후보 수 (검색어 3개 × 사진·일러스트 = 최대 24장을 AI가 봄)
 
 
 def _pixabay(query: str, image_type: str) -> list[dict]:

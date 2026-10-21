@@ -17,6 +17,7 @@ jobs:
     env:
       TZ: Asia/Seoul
       PYTHONIOENCODING: utf-8
+      PYTHONUNBUFFERED: "1"
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
       PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
