@@ -192,9 +192,10 @@ def _generate(prompt: str | list, schema: type[BaseModel], think: bool = False):
             print(f"   ⏱️ AI 응답 {time.time() - started:.0f}초 ({model})")
             return resp.parsed
         except (errors.ServerError, httpx.TimeoutException) as e:  # 구글 서버가 바쁘거나 2분 넘게 답이 없을 때
-            _exhausted.add(model)
+            # 혼잡은 잠깐인 경우가 많아서, 이번 요청만 다음 모델로 넘기고 다음 요청 땐 좋은 모델부터 다시 시도한다
+            # (한도 소진(429)과 달리 영구 제외하지 않음 → 하루 종일 가벼운 모델로만 쓰는 일 방지)
             why = f"서버 혼잡({e.code})" if isinstance(e, errors.ServerError) else "2분 넘게 응답 없음"
-            print(f"   ↪️ {model}: {why} → 다음 모델로 전환")
+            print(f"   ↪️ {model}: {why} → 이번만 다음 모델로")
         except errors.ClientError as e:
             if e.code not in (404, 429):
                 raise
