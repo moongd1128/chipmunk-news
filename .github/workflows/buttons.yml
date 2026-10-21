@@ -1,19 +1,53 @@
 # 5분마다: 텔레그램에서 눌린 버튼·명령이 있으면 처리하고, 이어서 20분 동안 빠른 모드 (PC 봇이 켜져 있으면 쉼)
+#
+# 누가 깨우나요?
+#   - cron-job.org (외부 알람): 5분마다 정확히 깨워요 (live=false → 눌린 버튼이 있을 때만 일함)
+#   - GitHub 자체 예약(schedule): GitHub이 바쁘면 30분~1시간씩 밀려서 예비용으로만 둠
+#   - 직접 실행([Run workflow]): 버튼이 없어도 빠른 모드로 켜둠 (검수하려고 일부러 깨운 거니까)
 name: telegram buttons
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # GitHub 사정으로 실제로는 5~15분 간격이 될 수 있어요
+    - cron: "*/30 * * * *"   # 예비용 (주로 cron-job.org가 5분마다 깨워요)
   workflow_dispatch:
-
-concurrency:
-  group: chipmunk-state
-  cancel-in-progress: false
+    inputs:
+      live:
+        description: "버튼이 없어도 20분 빠른 모드로 켜두기"
+        type: boolean
+        default: true
 
 jobs:
+  # 1) 눌린 버튼이 있는지만 가볍게 확인 (없으면 설치 없이 바로 끝 → 빠르고 가벼움)
+  #    여기엔 줄서기(concurrency)를 안 걸어요. 걸면 5분마다 오는 확인이 아침 카드 만들기를 밀어낼 수 있어서
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      has: ${{ steps.check.outputs.has }}
+    steps:
+      - name: 눌린 버튼 확인
+        id: check
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.live && '1' || '' }}
+        run: |
+          resp=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?timeout=0&limit=1")
+          ok=$(echo "$resp" | jq -r '.ok')
+          count=$(echo "$resp" | jq -r '.result | length // 0')
+          echo "ok=$ok count=$count"
+          # ok=false(409)면 PC 봇이나 다른 빠른 모드가 이미 깨어 있다는 뜻 → 그쪽이 처리하니 쉼
+          if [ "$ok" = "true" ] && [ "$count" != "0" ]; then echo "has=1" >> "$GITHUB_OUTPUT"; fi
+          if [ "$ok" = "true" ] && [ -n "$FORCE" ]; then echo "has=1" >> "$GITHUB_OUTPUT"; fi
+
+  # 2) 있을 때만 설치하고 처리
   buttons:
+    needs: check
+    if: needs.check.outputs.has == '1'
     runs-on: ubuntu-latest
     timeout-minutes: 40   # 버튼 처리 + 20분 빠른 모드
+    concurrency:
+      group: chipmunk-state   # 아침 카드 만들기와 동시에 돌지 않게 (같은 상태를 쓰니까)
+      cancel-in-progress: false
     env:
       TZ: Asia/Seoul
       PYTHONIOENCODING: utf-8
@@ -28,33 +62,17 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
     steps:
-      # 1) 눌린 버튼이 있는지만 가볍게 확인 (없으면 설치 없이 바로 끝 → 빠르고 가벼움)
-      - name: 눌린 버튼 확인
-        id: check
-        run: |
-          resp=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?timeout=0&limit=1")
-          ok=$(echo "$resp" | jq -r '.ok')
-          count=$(echo "$resp" | jq -r '.result | length // 0')
-          echo "ok=$ok count=$count"
-          if [ "$ok" = "true" ] && [ "$count" != "0" ]; then echo "has=1" >> "$GITHUB_OUTPUT"; fi
-          # 직접 실행([Run workflow])하면 버튼이 없어도 빠른 모드로 켜둔다 (검수하려고 일부러 깨운 거니까)
-          if [ "$ok" = "true" ] && [ "${{ github.event_name }}" = "workflow_dispatch" ]; then echo "has=1" >> "$GITHUB_OUTPUT"; fi
-      # 2) 있을 때만 설치하고 처리
       - uses: actions/checkout@v4
-        if: steps.check.outputs.has == '1'
       - uses: actions/setup-python@v5
-        if: steps.check.outputs.has == '1'
         with:
           python-version: "3.12"
           cache: pip
       - name: 패키지 설치
-        if: steps.check.outputs.has == '1'
         run: |
           pip install -r requirements.txt
           python -m playwright install --with-deps chromium
           sudo apt-get install -y -qq fonts-noto-cjk > /dev/null
       - name: 버튼 처리
-        if: steps.check.outputs.has == '1'
         run: python bot_once.py
         env:
-          FORCE_LIVE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
+          FORCE_LIVE: ${{ github.event_name == 'workflow_dispatch' && inputs.live && '1' || '' }}
