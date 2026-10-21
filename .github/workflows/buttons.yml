@@ -1,0 +1,55 @@
+# 5분마다: 텔레그램에서 눌린 버튼·명령이 있으면 처리 (PC 봇이 켜져 있으면 쉼)
+name: telegram buttons
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # GitHub 사정으로 실제로는 5~15분 간격이 될 수 있어요
+  workflow_dispatch:
+
+concurrency:
+  group: chipmunk-state
+  cancel-in-progress: false
+
+jobs:
+  buttons:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TZ: Asia/Seoul
+      PYTHONIOENCODING: utf-8
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
+      PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+      INSTAGRAM_TOKEN_REFRESHED_AT: ${{ secrets.INSTAGRAM_TOKEN_REFRESHED_AT }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+    steps:
+      # 1) 눌린 버튼이 있는지만 가볍게 확인 (없으면 설치 없이 바로 끝 → 빠르고 가벼움)
+      - name: 눌린 버튼 확인
+        id: check
+        run: |
+          resp=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?timeout=0&limit=1")
+          ok=$(echo "$resp" | jq -r '.ok')
+          count=$(echo "$resp" | jq -r '.result | length // 0')
+          echo "ok=$ok count=$count"
+          if [ "$ok" = "true" ] && [ "$count" != "0" ]; then echo "has=1" >> "$GITHUB_OUTPUT"; fi
+      # 2) 있을 때만 설치하고 처리
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.has == '1'
+      - uses: actions/setup-python@v5
+        if: steps.check.outputs.has == '1'
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: 패키지 설치
+        if: steps.check.outputs.has == '1'
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+          sudo apt-get install -y -qq fonts-noto-cjk > /dev/null
+      - name: 버튼 처리
+        if: steps.check.outputs.has == '1'
+        run: python bot_once.py

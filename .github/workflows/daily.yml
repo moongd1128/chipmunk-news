@@ -1,0 +1,41 @@
+# 매일 아침 8시(한국 시간): 원고 → 카드 이미지 → 릴스 → 텔레그램으로 후보 보내기
+name: daily cards
+
+on:
+  schedule:
+    - cron: "0 23 * * *"   # UTC 23시 = 한국 아침 8시 (GitHub 사정으로 몇 분~수십 분 늦을 수 있어요)
+  workflow_dispatch:        # GitHub 화면에서 [Run workflow]로 바로 실행
+
+concurrency:
+  group: chipmunk-state     # 버튼 처리와 동시에 돌지 않게 (같은 상태를 쓰니까)
+  cancel-in-progress: false
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      TZ: Asia/Seoul
+      PYTHONIOENCODING: utf-8
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
+      PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+      INSTAGRAM_TOKEN_REFRESHED_AT: ${{ secrets.INSTAGRAM_TOKEN_REFRESHED_AT }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: 패키지 설치
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+          sudo apt-get install -y -qq fonts-noto-cjk > /dev/null
+      - name: 오늘 카드 만들기
+        run: python daily.py

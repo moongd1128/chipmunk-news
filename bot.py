@@ -24,7 +24,8 @@ from datetime import date
 from pathlib import Path
 
 from dotenv import load_dotenv, set_key
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Update
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Update
+from telegram.error import BadRequest
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 import images
@@ -97,6 +98,27 @@ def keyboard(day: str, n: int, card: dict) -> InlineKeyboardMarkup | None:
     ])
 
 
+async def _answer(query, text: str | None = None, show_alert: bool = False) -> None:
+    """버튼 눌림에 답한다. GitHub Actions처럼 몇 분 뒤에 처리하면 텔레그램이
+    '너무 오래된 버튼'이라며 거절하는데, 그래도 나머지 작업(표지 바꾸기 등)은 계속하게 한다."""
+    try:
+        await query.answer(text, show_alert=show_alert)
+    except BadRequest:
+        pass
+
+
+# ---------- 상태 동기화 (PC ↔ GitHub Actions) ----------
+
+SYNC_EACH_CHANGE = False  # PC 봇에서는 True: 바뀔 때마다 Supabase에 올려서 GitHub와 맞춘다
+
+
+async def _sync() -> None:
+    if SYNC_EACH_CHANGE:
+        import state
+
+        await asyncio.to_thread(state.push)
+
+
 # ---------- 권한 ----------
 
 def _allowed(update: Update) -> bool:
@@ -120,18 +142,18 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # 다른 사람이 /start 하면 아무 대답도 하지 않는다
 
 
-async def send_cards(context: ContextTypes.DEFAULT_TYPE, chat_id: str, day: str) -> None:
+async def send_cards(bot: Bot, chat_id: str, day: str, only_pending: bool = False) -> None:
     cards = load_cards(day)
     if not cards:
-        await context.bot.send_message(chat_id, "오늘 만든 카드가 없어요. /run 으로 만들어 주세요.")
+        await bot.send_message(chat_id, "오늘 만든 카드가 없어요. /run 으로 만들어 주세요.")
         return
     for n, card in enumerate(cards, 1):
         path = cover_path(day, n)
-        if not path.exists():
+        if not path.exists() or (only_pending and card.get("status", "pending") != "pending"):
             continue
         with open(path, "rb") as f:
-            await context.bot.send_photo(chat_id, f, caption=caption(card, n, len(cards)),
-                                         reply_markup=keyboard(day, n, card))
+            await bot.send_photo(chat_id, f, caption=caption(card, n, len(cards)),
+                                 reply_markup=keyboard(day, n, card))
 
 
 def latest_day() -> str:
@@ -143,7 +165,7 @@ def latest_day() -> str:
 async def cmd_send(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _allowed(update):
         return
-    await send_cards(context, update.effective_chat.id, latest_day())
+    await send_cards(context.bot, update.effective_chat.id, latest_day())
 
 
 async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -156,7 +178,8 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await asyncio.to_thread(step1.main)
     await update.message.reply_text("🎨 카드 이미지를 만드는 중이에요...")
     await asyncio.to_thread(render.render, day)
-    await send_cards(context, update.effective_chat.id, day)
+    await _sync()
+    await send_cards(context.bot, update.effective_chat.id, day)
 
 
 # ---------- 버튼 ----------
@@ -164,7 +187,7 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     if not _allowed(update):
-        await query.answer()
+        await _answer(query)
         return
     action, day, n = query.data.split("|")
     n = int(n)
@@ -173,7 +196,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     info = card.setdefault("image", {"mode": "text", "companies": [], "candidates": [], "ranked": [], "busy": [], "pos": 0})
 
     if action == "all":
-        await query.answer("6장 보내는 중")
+        await _answer(query, "6장 보내는 중")
         # 버튼으로는 표지만 다시 찍으니, 전체를 볼 때 6장을 최신 상태로 맞춘다
         await asyncio.to_thread(render.render, day, n)
         folder = Path("output") / day / f"card_{n:02d}"
@@ -186,7 +209,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     if action == "ok":  # 실수로 눌러도 바로 올라가지 않게 한 번 더 묻기
-        await query.answer()
+        await _answer(query)
         await query.edit_message_reply_markup(InlineKeyboardMarkup([[
             InlineKeyboardButton("🚀 인스타에 올리기", callback_data=f"publish|{day}|{n}"),
             InlineKeyboardButton("↩️ 취소", callback_data=f"cancel|{day}|{n}"),
@@ -194,12 +217,12 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     if action == "cancel":
-        await query.answer("취소했어요")
+        await _answer(query, "취소했어요")
         await query.edit_message_reply_markup(keyboard(day, n, card))
         return
 
     if action == "publish":
-        await query.answer("올리는 중... (30초~1분)")
+        await _answer(query, "올리는 중... (30초~1분)")
         await query.edit_message_caption(caption(card, n, len(cards)) + "\n\n📤 인스타에 올리는 중...")
         await asyncio.to_thread(render.render, day, n)  # 6장 모두 최신 상태로
         if not publisher_ready():
@@ -214,20 +237,22 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             except Exception as e:  # noqa: BLE001 - 어떤 오류든 텔레그램에 보여주고 다시 시도할 수 있게
                 card["status"], note = "pending", f"\n\n❌ 발행 실패: {e}"
         save_cards(day, cards)
+        await _sync()
         await query.edit_message_caption(caption(card, n, len(cards)) + note, reply_markup=keyboard(day, n, card))
         return
 
     if action in ("skip", "undo"):
         card["status"] = {"skip": "skipped", "undo": "pending"}[action]
         save_cards(day, cards)
-        await query.answer(STATUS_TEXT[card["status"]])
+        await _sync()
+        await _answer(query, STATUS_TEXT[card["status"]])
         await query.edit_message_caption(caption(card, n, len(cards)), reply_markup=keyboard(day, n, card))
         return
 
     # 표지를 바꾸는 버튼들
     if action == "next":
         if not info["ranked"]:
-            await query.answer("다른 사진 후보가 없어요. 🏷️ 로고 표지나 🎨 AI로 그리기를 써보세요.", show_alert=True)
+            await _answer(query, "다른 사진 후보가 없어요. 🏷️ 로고 표지나 🎨 AI로 그리기를 써보세요.", show_alert=True)
             return
         if info["mode"] == "photo":
             info["pos"] = (info["pos"] + 1) % len(info["ranked"])
@@ -236,24 +261,24 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     elif action == "logo":
         if info["mode"] == "logo":
             if not info["ranked"]:
-                await query.answer("사진 후보가 없어서 로고 표지를 유지해요.", show_alert=True)
+                await _answer(query, "사진 후보가 없어서 로고 표지를 유지해요.", show_alert=True)
                 return
             info["mode"], msg = "photo", "사진 표지로 바꿨어요"
         else:
             if not info["companies"]:
-                await query.answer("이 기사엔 연결된 회사 로고가 없어요.", show_alert=True)
+                await _answer(query, "이 기사엔 연결된 회사 로고가 없어요.", show_alert=True)
                 return
             info["mode"], msg = "logo", "로고 표지로 바꿨어요"
     elif action == "title":
         options = card.get("title_options") or []
         if len(options) < 2:
-            await query.answer("이 카드엔 다른 제목 후보가 없어요.", show_alert=True)
+            await _answer(query, "이 카드엔 다른 제목 후보가 없어요.", show_alert=True)
             return
         cur = options.index(card["hook_title"]) if card["hook_title"] in options else -1
         card["hook_title"] = options[(cur + 1) % len(options)]
         msg = f"제목 {options.index(card['hook_title']) + 1}/{len(options)}"
     elif action == "draw":
-        await query.answer("그리는 중...")
+        await _answer(query, "그리는 중...")
         ok = await asyncio.to_thread(images.draw_with_gemini, card, Path("output") / day / f"card_{n:02d}")
         if not ok:
             await context.bot.send_message(query.message.chat_id,
@@ -261,30 +286,44 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
         msg = "AI가 그린 그림으로 바꿨어요"
     else:
-        await query.answer()
+        await _answer(query)
         return
 
     save_cards(day, cards)
     if action != "draw":
-        await query.answer(msg)
+        await _answer(query, msg)
     await asyncio.to_thread(render.render, day, n, False, True)  # 표지 1장만 (빠르게)
+    await _sync()
     with open(cover_path(day, n), "rb") as f:
         await query.edit_message_media(InputMediaPhoto(f, caption=caption(card, n, len(cards))),
                                        reply_markup=keyboard(day, n, card))
 
 
-def main() -> None:
+def build_app() -> Application:
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
-        raise SystemExit(".env에 TELEGRAM_BOT_TOKEN이 없어요.")
+        raise SystemExit("TELEGRAM_BOT_TOKEN이 없어요.")
     app = Application.builder().token(token).build()
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("run", cmd_run))
     app.add_handler(CommandHandler("send", cmd_send))
     app.add_handler(CallbackQueryHandler(on_button))
-    print("🐿️ 칩다람 봇이 켜졌어요. 텔레그램에서 봇에게 /start 를 보내세요. (끄려면 Ctrl+C)")
-    # 봇이 꺼져 있는 동안 눌린 버튼·명령은 버린다 (밀린 [발행]이 한꺼번에 실행되지 않게)
-    app.run_polling(drop_pending_updates=True)
+    return app
+
+
+def main() -> None:
+    """PC에서 켜두는 빠른 모드: 버튼에 2~3초 안에 반응한다."""
+    global SYNC_EACH_CHANGE
+    import state
+
+    print("☁️ GitHub 쪽 최신 상태 받는 중...")
+    state.pull()
+    SYNC_EACH_CHANGE = True
+    app = build_app()
+    print("🐿️ 칩다람 봇이 켜졌어요 (PC 빠른 모드). 끄면 GitHub이 몇 분마다 대신 처리해요. (끄려면 Ctrl+C)")
+    # drop_pending_updates는 쓰지 않는다: 꺼져 있는 동안 눌린 버튼은 GitHub이 이미 처리했거나,
+    # 아직 안 했으면 여기서 이어서 처리하면 된다 ([발행]은 확인 버튼을 한 번 더 거쳐서 안전)
+    app.run_polling()
 
 
 if __name__ == "__main__":

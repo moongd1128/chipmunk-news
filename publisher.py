@@ -61,7 +61,12 @@ def upload_public(path: Path, remote_name: str) -> str:
 
 # ---------- 인스타 API ----------
 
+TOKEN_FILE = Path("data/ig_token.json")  # 연장된 토큰 (PC·GitHub Actions가 state로 같이 씀)
+
+
 def _token() -> str:
+    if TOKEN_FILE.exists():
+        return json.loads(TOKEN_FILE.read_text(encoding="utf-8"))["token"]
     return os.environ["INSTAGRAM_ACCESS_TOKEN"]
 
 
@@ -78,18 +83,25 @@ def me() -> dict:
 
 
 def refresh_token_if_old() -> None:
-    """토큰이 오래됐으면 새 토큰으로 바꿔서 .env에 저장한다 (60일 만료 방지)."""
-    stamp = os.environ.get("INSTAGRAM_TOKEN_REFRESHED_AT")
-    if stamp and time.time() - float(stamp) < TOKEN_REFRESH_DAYS * 86400:
+    """토큰이 오래됐으면 새 토큰으로 바꿔서 data/ig_token.json에 저장한다 (60일 만료 방지).
+    data/는 state.py로 PC와 GitHub Actions가 같이 쓰니까, 어디서 연장해도 양쪽에 반영된다."""
+    if TOKEN_FILE.exists():
+        stamp = json.loads(TOKEN_FILE.read_text(encoding="utf-8")).get("refreshed_at", 0)
+    else:
+        stamp = float(os.environ.get("INSTAGRAM_TOKEN_REFRESHED_AT") or 0)
+    if time.time() - float(stamp) < TOKEN_REFRESH_DAYS * 86400:
         return
     resp = requests.get("https://graph.instagram.com/refresh_access_token",
                         params={"grant_type": "ig_refresh_token", "access_token": _token()}, timeout=30).json()
-    if "access_token" in resp:
+    if "access_token" not in resp:
+        print(f"⚠️ 인스타 토큰 연장 실패: {resp.get('error', {}).get('message', resp)}")
+        return
+    TOKEN_FILE.parent.mkdir(exist_ok=True)
+    TOKEN_FILE.write_text(json.dumps({"token": resp["access_token"], "refreshed_at": int(time.time())}),
+                          encoding="utf-8")
+    if Path(".env").exists():  # PC에서는 .env도 같이 맞춰둔다
         set_key(".env", "INSTAGRAM_ACCESS_TOKEN", resp["access_token"], quote_mode="never")
-        os.environ["INSTAGRAM_ACCESS_TOKEN"] = resp["access_token"]
-    now = str(int(time.time()))
-    set_key(".env", "INSTAGRAM_TOKEN_REFRESHED_AT", now, quote_mode="never")
-    os.environ["INSTAGRAM_TOKEN_REFRESHED_AT"] = now
+    print("🔑 인스타 토큰을 60일 연장했어요")
 
 
 def _wait_ready(container_id: str) -> None:
