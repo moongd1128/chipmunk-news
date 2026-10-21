@@ -69,6 +69,7 @@ class CardNews(BaseModel):
     hashtags: list[str]
     cover_type: str           # "logo"(회사가 주인공) 또는 "image"(사진·일러스트)
     companies: list[str]      # 주인공 회사 0~2개 (logos.COMPANIES의 이름 그대로)
+    rivalry: bool = False     # 두 회사가 경쟁·대결하는 기사면 True (표지에 VS), 협력이면 False (표지에 ×)
     image_queries: list[str]  # 무료 이미지 사이트 검색어 3개 (영어)
     image_prompt: str         # 마땅한 이미지가 없을 때 AI로 그릴 그림 설명 (영어)
 
@@ -76,6 +77,7 @@ class CardNews(BaseModel):
 class ImageIdea(BaseModel):
     cover_type: str
     companies: list[str]
+    rivalry: bool = False
     image_queries: list[str]
     image_prompt: str
 
@@ -90,7 +92,10 @@ def _image_rule() -> str:
 
     return f"""- cover_type: 참고용. 기사의 주인공이 특정 회사·서비스면 "logo", 아니면 "image"
 - companies: 기사에 중요하게 나오는 회사·서비스 0~2개 (표지에 로고 배지로 들어감). 반드시 이 목록의 이름 그대로만: {", ".join(logos.COMPANIES)}
-  두 회사가 경쟁·비교·갈등하는 기사면 2개, 아니면 1개. 목록에 없으면 빈 목록
+  서로 다른 두 회사가 함께 주인공인 기사면 2개, 아니면 1개. 목록에 없으면 빈 목록
+  회사와 그 회사의 제품(오픈AI와 챗GPT, 구글과 제미나이 등)은 같은 쪽이니 둘 다 넣지 말고 제품 하나만
+- rivalry: companies가 2개이고 두 회사가 **경쟁·대결·갈등**하는 기사면 true (표지에 VS로 나옴).
+  협력·제휴·인수처럼 같은 편이면 false. 회사가 1개 이하면 false
 - image_queries: 무료 이미지 사이트(Pixabay) 검색어 3개. 각각 영어 1~3단어.
   기사 주제를 있는 그대로 보여주는 직접적인 대상으로 (예: 수학 난제 → "math equations", 가격 인하 → "price tag sale",
   데이터 수집 → "data server", 법원 판결 → "judge gavel", 해킹 → "hacker code screen")

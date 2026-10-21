@@ -62,7 +62,8 @@ def prepare(card: dict) -> None:
     if not card.get("image_queries"):
         card.update(writer.suggest_image(card).model_dump())
 
-    companies = [c for c in card.get("companies", []) if c in logos.COMPANIES][:2]
+    # 회사와 그 회사 제품이 같이 오면 하나로 (예: 오픈AI + 챗GPT → 챗GPT)
+    companies = logos.merge_family([c for c in card.get("companies", []) if c in logos.COMPANIES])[:2]
     candidates = collect_candidates(card["image_queries"])
     print(f"   🖼️ 후보 {len(candidates)}장 ({', '.join(card['image_queries'])})")
 
@@ -81,7 +82,8 @@ def prepare(card: dict) -> None:
     else:
         mode = "text"
     card["image"] = {"mode": mode, "companies": companies, "candidates": candidates,
-                     "ranked": ranked, "busy": busy, "pos": 0}
+                     "ranked": ranked, "busy": busy, "pos": 0,
+                     "rivalry": bool(card.get("rivalry")) and len(companies) == 2}
     logo_txt = f" + 로고({' vs '.join(companies)})" if companies else ""
     print(f"   🧭 표지: {'사진' + logo_txt if mode == 'photo' else '로고' + logo_txt if mode == 'logo' else '글자'}")
 
@@ -115,7 +117,9 @@ def cover_assets(card: dict, out_dir: Path) -> dict:
         # 본문 사진은 표지에 안 쓴 다음 순위 사진 (로고 표지면 1순위 사진)
         "slide": (photos[0] if mode == "logo" else photos[1] if len(photos) > 1 else None) if photos else None,
         # 회사가 나오는 기사면 표지 종류와 상관없이 로고를 넣는다 (사진 표지에선 배지로)
-        "logos": [logos.get(c) for c in info.get("companies", [])],
+        # 이미 만들어진 원고에도 적용되게 여기서 한 번 더 합친다
+        "logos": [logos.get(c) for c in logos.merge_family(info.get("companies", []))],
+        "rivalry": bool(info.get("rivalry")),
     }
 
 

@@ -187,7 +187,8 @@
     {% if logos %}
       <div class="logos {{ 'small' if image else '' }}">
         {% for lg in logos %}
-          {% if not loop.first %}<div class="vs-mark">VS</div>{% endif %}
+          {# 경쟁 기사면 VS, 협력·같이 나오는 기사면 × #}
+          {% if not loop.first %}<div class="vs-mark">{{ "VS" if rivalry else "×" }}</div>{% endif %}
           {% if lg.svg %}<div class="logo-badge">{{ lg.svg | safe }}</div>
           {% else %}<div class="logo-badge word">{{ lg.name }}</div>{% endif %}
         {% endfor %}

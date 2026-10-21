@@ -60,6 +60,36 @@ COMPANIES = {
 }
 
 
+# 제품 → 만든 회사. 둘이 같이 나오면 "오픈AI VS 챗GPT"처럼 이상해지니 제품 하나로 합친다
+PARENT = {
+    "챗GPT": "오픈AI",
+    "클로드": "앤트로픽",
+    "제미나이": "구글",
+    "딥마인드": "구글",
+    "유튜브": "구글",
+    "코파일럿": "마이크로소프트",
+    "그록": "xAI",
+    "X(트위터)": "xAI",
+    "큐원": "알리바바",
+    "인스타그램": "메타",
+    "틱톡": "바이트댄스",
+}
+
+
+def merge_family(companies: list[str]) -> list[str]:
+    """같은 집안(회사와 그 회사 제품)은 하나만 남긴다. 제품 쪽이 더 직관적이라 제품을 남긴다.
+    예) ['오픈AI', '챗GPT'] → ['챗GPT'], ['구글', '제미나이'] → ['제미나이']"""
+    out: list[str] = []
+    for c in companies:
+        family = PARENT.get(c, c)
+        same = next((o for o in out if PARENT.get(o, o) == family), None)
+        if same is None:
+            out.append(c)
+        elif c in PARENT and same not in PARENT:  # 앞에 회사가 있고 지금 게 제품이면 제품으로 교체
+            out[out.index(same)] = c
+    return out
+
+
 def _file(name: str) -> Path:
     return LOGO_DIR / f"{re.sub(r'[^0-9A-Za-z가-힣]', '_', name)}.svg"
 

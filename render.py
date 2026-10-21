@@ -45,6 +45,7 @@ def build_pages(card: dict, day: str, assets: dict) -> list[str]:
 
     pages = [template.render(kind="cover", title=title, emoji=emojis[0] if emojis else DEFAULT_EMOJI,
                              subtitle=card["subtitle"], image=assets["cover"], logos=assets["logos"],
+                             rivalry=assets.get("rivalry"),
                              focus=assets.get("focus"), **common)]
     for i, s in enumerate(card["slides"], 1):
         pages.append(template.render(kind="slide", index=i, heading=s["heading"], body=s["body"],
