@@ -15,5 +15,6 @@ assets/cache/
 # 배경음악: 저작권상 공개 저장소에 다시 배포하면 안 됨 (Supabase에 따로 보관)
 assets/bgm/
 
-# 작업용 메모
+# 작업용 메모 (개인 사정이 적혀 있어서 공개 저장소에 올리지 않음)
 comments_*.md
+CLAUDE.md
