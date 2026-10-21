@@ -13,7 +13,8 @@
   ✏️ 다른 제목   AI가 뽑은 제목 후보 3개(질문형·숫자형·반전형) 중 다음 것으로
   🎨 AI로 그리기 Gemini로 표지 그림 그리기 (결제 등록 전에는 안 돼요)
   👀 전체 보기   6장 전부 미리보기
-  ✅ 발행        한 번 더 확인한 뒤 인스타에 캐러셀로 올리기 (publisher.py)
+  ✅ 발행        한 번 더 확인한 뒤 인스타에 캐러셀 + 릴스로 올리기 (publisher.py)
+  🎬 릴스 다시   캐러셀은 올라갔는데 릴스만 실패했을 때 릴스만 다시 올리기
   ❌ 건너뛰기    이 카드는 안 올리기
 """
 import asyncio
@@ -82,8 +83,14 @@ def caption(card: dict, n: int, total: int) -> str:
 
 def keyboard(day: str, n: int, card: dict) -> InlineKeyboardMarkup | None:
     if card.get("status") == "published":  # 이미 올라간 건 되돌릴 수 없으니 보기 버튼만
-        link = card.get("published", {}).get("permalink")
-        return InlineKeyboardMarkup([[InlineKeyboardButton("📱 인스타에서 보기", url=link)]]) if link else None
+        rows = []
+        if link := card.get("published", {}).get("permalink"):
+            rows.append([InlineKeyboardButton("📱 인스타에서 보기", url=link)])
+        if reel := card.get("reel", {}).get("permalink"):
+            rows.append([InlineKeyboardButton("🎬 릴스 보기", url=reel)])
+        elif not card.get("reel"):  # 릴스만 실패했으면 다시 올릴 수 있게
+            rows.append([InlineKeyboardButton("🎬 릴스 다시 올리기", callback_data=f"reel|{day}|{n}")])
+        return InlineKeyboardMarkup(rows) if rows else None
     if card.get("status", "pending") != "pending":
         return InlineKeyboardMarkup([[InlineKeyboardButton("↩️ 다시 검수", callback_data=f"undo|{day}|{n}")]])
     is_logo = card.get("image", {}).get("mode") == "logo"
@@ -184,6 +191,16 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # ---------- 버튼 ----------
 
+async def _publish_reel(day: str, n: int) -> tuple[dict, str]:
+    """릴스를 올리고 (최신 카드, 메시지에 붙일 말)을 돌려준다. 실패해도 캐러셀은 이미 올라간 상태라 그대로 둔다."""
+    try:
+        await asyncio.to_thread(publisher.publish_reel, day, n)
+        note = ""
+    except Exception as e:  # noqa: BLE001 - 어떤 오류든 텔레그램에 보여주고 🎬 버튼으로 다시 시도할 수 있게
+        note = f"\n\n⚠️ 캐러셀은 올라갔지만 릴스는 실패했어요: {e}"
+    return load_cards(day)[n - 1], note
+
+
 async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     if not _allowed(update):
@@ -222,7 +239,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     if action == "publish":
-        await _answer(query, "올리는 중... (30초~1분)")
+        await _answer(query, "올리는 중... (캐러셀 1분 + 릴스 2~4분)")
         await query.edit_message_caption(caption(card, n, len(cards)) + "\n\n📤 인스타에 올리는 중...")
         await asyncio.to_thread(render.render, day, n)  # 6장 모두 최신 상태로
         if not publisher_ready():
@@ -237,6 +254,17 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             except Exception as e:  # noqa: BLE001 - 어떤 오류든 텔레그램에 보여주고 다시 시도할 수 있게
                 card["status"], note = "pending", f"\n\n❌ 발행 실패: {e}"
         save_cards(day, cards)
+        if card["status"] == "published":
+            await query.edit_message_caption(caption(card, n, len(cards)) + "\n\n🎬 릴스 올리는 중... (2~4분)")
+            card, note = await _publish_reel(day, n)
+        await _sync()
+        await query.edit_message_caption(caption(card, n, len(cards)) + note, reply_markup=keyboard(day, n, card))
+        return
+
+    if action == "reel":
+        await _answer(query, "릴스 올리는 중... (2~4분)")
+        await query.edit_message_caption(caption(card, n, len(cards)) + "\n\n🎬 릴스 올리는 중... (2~4분)")
+        card, note = await _publish_reel(day, n)
         await _sync()
         await query.edit_message_caption(caption(card, n, len(cards)) + note, reply_markup=keyboard(day, n, card))
         return

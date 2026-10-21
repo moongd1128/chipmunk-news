@@ -14,6 +14,8 @@
 사용법:
   python publisher.py check               # 연결 확인 (아무것도 올리지 않음)
   python publisher.py 2026-10-20 3        # 그날 3번 카드를 캐러셀로 발행
+  python publisher.py reel 2026-10-20 3   # 그날 3번 카드를 릴스로 발행
+  python publisher.py reel-test 2026-10-20 3   # 릴스를 인스타에 '준비'만 시켜보기 (발행 안 함)
 """
 import json
 import os
@@ -29,6 +31,9 @@ load_dotenv()
 
 IG = "https://graph.instagram.com/v26.0"
 TOKEN_REFRESH_DAYS = 50  # 토큰은 60일짜리라 50일 지나면 미리 연장
+# 릴스를 피드(프로필 격자)에도 보여줄지. 캐러셀과 내용이 같아서 격자에 두 번 보이지 않게 꺼둠
+# (꺼도 릴스 탭·추천에는 그대로 나가요)
+REEL_SHARE_TO_FEED = False
 
 
 # ---------- 공개 저장소 (Supabase) ----------
@@ -43,17 +48,17 @@ def _supabase_base() -> str:
     return f"{u.scheme}://{u.netloc}"
 
 
-def upload_public(path: Path, remote_name: str) -> str:
+def upload_public(path: Path, remote_name: str, content_type: str = "image/jpeg") -> str:
     """파일을 Supabase 공개 버킷에 올리고 인터넷 주소를 돌려준다."""
     base = _supabase_base()
     key = os.environ["SUPABASE_KEY"]
-    headers = {"apikey": key, "Content-Type": "image/jpeg", "x-upsert": "true"}
+    headers = {"apikey": key, "Content-Type": content_type, "x-upsert": "true"}
     if key.startswith("eyJ"):  # 예전 형식(service_role JWT) 키는 Authorization에도 넣어야 해요
         headers["Authorization"] = f"Bearer {key}"
     resp = requests.post(
         f"{base}/storage/v1/object/{_bucket()}/{remote_name}",
         headers=headers,
-        data=path.read_bytes(), timeout=60,
+        data=path.read_bytes(), timeout=180,
     )
     resp.raise_for_status()
     return f"{base}/storage/v1/object/public/{_bucket()}/{remote_name}"
@@ -104,16 +109,16 @@ def refresh_token_if_old() -> None:
     print("🔑 인스타 토큰을 60일 연장했어요")
 
 
-def _wait_ready(container_id: str) -> None:
-    """인스타가 사진을 다 받아갈 때까지 기다린다."""
-    for _ in range(30):
-        status = _ig("GET", container_id, fields="status_code")["status_code"]
-        if status == "FINISHED":
+def _wait_ready(container_id: str, what: str = "사진", tries: int = 30, wait: int = 3) -> None:
+    """인스타가 사진(영상)을 다 받아갈 때까지 기다린다."""
+    for _ in range(tries):
+        data = _ig("GET", container_id, fields="status_code,status")
+        if data["status_code"] == "FINISHED":
             return
-        if status in ("ERROR", "EXPIRED"):
-            raise RuntimeError(f"인스타가 사진 처리에 실패했어요 ({status})")
-        time.sleep(3)
-    raise RuntimeError("인스타 사진 처리가 너무 오래 걸려요")
+        if data["status_code"] in ("ERROR", "EXPIRED"):
+            raise RuntimeError(f"인스타가 {what} 처리에 실패했어요 ({data.get('status') or data['status_code']})")
+        time.sleep(wait)
+    raise RuntimeError(f"인스타 {what} 처리가 너무 오래 걸려요")
 
 
 def build_caption(card: dict) -> str:
@@ -158,6 +163,45 @@ def publish_carousel(day: str, n: int) -> str:
     return link
 
 
+def _prepare_reel(day: str, n: int) -> str:
+    """최종 카드로 릴스를 새로 만들고(검수 중 표지·제목이 바뀌었을 수 있어서), 인스타에 올릴 준비를 시킨다.
+    준비된 조각(container) 번호를 돌려준다. 이것만으로는 인스타에 안 올라가요."""
+    import reels
+    import state
+
+    card_dir = Path("output") / day / f"card_{n:02d}"
+    cards = json.loads((Path("output") / day / "cards.json").read_text(encoding="utf-8"))
+    if not list(reels.BGM_DIR.glob("*.mp3")):
+        state.pull_bgm()  # GitHub Actions 버튼 처리에는 음악이 없어서 이때 받아온다
+    print("🎬 릴스 영상 만드는 중...")
+    video = reels.make_reel(card_dir)
+
+    user_id = me()["user_id"]
+    print("📤 릴스 영상 올리는 중...")
+    url = upload_public(video, f"{day}/card_{n:02d}/{int(time.time())}_reels.mp4", "video/mp4")
+    cid = _ig("POST", f"{user_id}/media", media_type="REELS", video_url=url,
+              caption=build_caption(cards[n - 1]), share_to_feed=str(REEL_SHARE_TO_FEED).lower())["id"]
+    print("⏳ 인스타가 영상 처리하는 중... (1~3분)")
+    _wait_ready(cid, "영상", tries=60, wait=5)
+    return cid
+
+
+def publish_reel(day: str, n: int) -> str:
+    """그날 n번 카드를 릴스로 발행하고, 릴스 주소를 돌려준다."""
+    refresh_token_if_old()
+    cid = _prepare_reel(day, n)
+    print("🚀 릴스 발행 중...")
+    media_id = _ig("POST", f"{me()['user_id']}/media_publish", creation_id=cid)["id"]
+    link = _ig("GET", media_id, fields="permalink").get("permalink", "")
+
+    cards_file = Path("output") / day / "cards.json"
+    cards = json.loads(cards_file.read_text(encoding="utf-8"))
+    cards[n - 1]["reel"] = {"media_id": media_id, "permalink": link, "at": int(time.time())}
+    cards_file.write_text(json.dumps(cards, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"✅ 릴스 발행 완료: {link}")
+    return link
+
+
 def check() -> None:
     """키가 다 있는지, 인스타 계정과 저장소에 연결되는지만 확인한다 (게시물은 안 올림)."""
     for k in ("INSTAGRAM_ACCESS_TOKEN", "SUPABASE_URL", "SUPABASE_KEY"):
@@ -181,6 +225,10 @@ def check() -> None:
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "check":
         check()
+    elif len(sys.argv) == 4 and sys.argv[1] == "reel":
+        publish_reel(sys.argv[2], int(sys.argv[3]))
+    elif len(sys.argv) == 4 and sys.argv[1] == "reel-test":
+        print(f"✅ 인스타가 영상을 받아줬어요 (준비 번호 {_prepare_reel(sys.argv[2], int(sys.argv[3]))}, 발행은 안 함)")
     elif len(sys.argv) == 3:
         publish_carousel(sys.argv[1], int(sys.argv[2]))
     else:
