@@ -1,0 +1,10 @@
+feedparser
+trafilatura
+google-genai
+pydantic
+python-dotenv
+playwright
+jinja2
+requests
+python-telegram-bot
+imageio-ffmpeg

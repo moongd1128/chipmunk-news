@@ -1,0 +1,19 @@
+# 비밀값 (토큰·API 키) — 절대 올리지 않음. GitHub에서는 Secrets에 따로 넣는다
+.env
+
+# 파이썬
+.venv/
+__pycache__/
+
+# 매일 만들어지는 결과물·기록 (GitHub Actions에서는 별도 저장소 브랜치로 관리)
+data/
+output/
+
+# 글꼴·이미지 캐시
+assets/cache/
+
+# 배경음악: 저작권상 공개 저장소에 다시 배포하면 안 됨 (Supabase에 따로 보관)
+assets/bgm/
+
+# 작업용 메모
+comments_*.md
