@@ -37,6 +37,8 @@ jobs:
           count=$(echo "$resp" | jq -r '.result | length // 0')
           echo "ok=$ok count=$count"
           if [ "$ok" = "true" ] && [ "$count" != "0" ]; then echo "has=1" >> "$GITHUB_OUTPUT"; fi
+          # 직접 실행([Run workflow])하면 버튼이 없어도 빠른 모드로 켜둔다 (검수하려고 일부러 깨운 거니까)
+          if [ "$ok" = "true" ] && [ "${{ github.event_name }}" = "workflow_dispatch" ]; then echo "has=1" >> "$GITHUB_OUTPUT"; fi
       # 2) 있을 때만 설치하고 처리
       - uses: actions/checkout@v4
         if: steps.check.outputs.has == '1'
@@ -54,3 +56,5 @@ jobs:
       - name: 버튼 처리
         if: steps.check.outputs.has == '1'
         run: python bot_once.py
+        env:
+          FORCE_LIVE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
