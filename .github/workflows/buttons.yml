@@ -1,4 +1,4 @@
-# 5분마다: 텔레그램에서 눌린 버튼·명령이 있으면 처리 (PC 봇이 켜져 있으면 쉼)
+# 5분마다: 텔레그램에서 눌린 버튼·명령이 있으면 처리하고, 이어서 20분 동안 빠른 모드 (PC 봇이 켜져 있으면 쉼)
 name: telegram buttons
 
 on:
@@ -13,7 +13,7 @@ concurrency:
 jobs:
   buttons:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40   # 버튼 처리 + 20분 빠른 모드
     env:
       TZ: Asia/Seoul
       PYTHONIOENCODING: utf-8

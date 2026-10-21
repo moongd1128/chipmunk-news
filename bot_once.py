@@ -1,4 +1,4 @@
-"""GitHub Actions용: 밀려 있는 텔레그램 버튼·명령을 한 번 처리하고 끝낸다 (몇 분마다 실행)
+"""GitHub Actions용: 밀려 있는 텔레그램 버튼·명령을 처리하고, 이어서 20분 동안 빠른 모드로 깨어 있는다
 
 PC에서 bot.py가 켜져 있으면 텔레그램이 동시 접속을 막아서(409) 그냥 넘어간다.
 """
@@ -31,6 +31,11 @@ async def main() -> None:
         state.push()
     finally:
         await app.shutdown()
+    # 버튼을 누르기 시작했다는 건 지금 검수 중이라는 뜻 → 한동안 깨어 있어서 다음 버튼은 바로 반응
+    await bot.run_live(LIVE_MINUTES)
+
+
+LIVE_MINUTES = 20
 
 
 if __name__ == "__main__":

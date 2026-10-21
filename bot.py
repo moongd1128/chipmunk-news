@@ -311,6 +311,25 @@ def build_app() -> Application:
     return app
 
 
+async def run_live(minutes: int) -> None:
+    """정해진 시간 동안만 봇을 켜두는 빠른 모드 (GitHub Actions용).
+    카드가 막 도착했거나 버튼을 누르기 시작했을 때, 그동안은 버튼이 2~3초에 반응하게."""
+    global SYNC_EACH_CHANGE
+    SYNC_EACH_CHANGE = True
+    app = build_app()
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling(allowed_updates=["message", "callback_query"])
+    print(f"⚡ {minutes}분 동안 빠른 모드로 버튼 처리 중...", flush=True)
+    try:
+        await asyncio.sleep(minutes * 60)
+    finally:
+        await app.updater.stop()
+        await app.stop()
+        await app.shutdown()
+    print("⚡ 빠른 모드 끝 (이후 버튼은 GitHub이 몇 분마다 확인)", flush=True)
+
+
 def main() -> None:
     """PC에서 켜두는 빠른 모드: 버튼에 2~3초 안에 반응한다."""
     global SYNC_EACH_CHANGE

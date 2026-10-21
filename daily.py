@@ -65,8 +65,13 @@ def main() -> None:
     reels.make_all(day)
     t = _stage("릴스", t)
     state.push()
-    asyncio.run(notify("🌰 오늘의 칩다람 카드가 도착했어요! 버튼은 PC가 꺼져 있으면 몇 분 뒤에 반영돼요."))
+    asyncio.run(notify(f"🌰 오늘의 칩다람 카드가 도착했어요! 앞으로 {LIVE_MINUTES}분 동안은 버튼이 바로 반응해요."))
     asyncio.run(send_today(day))
+    # 카드가 막 도착했을 때 바로 검수하는 경우가 많으니, 한동안 깨어 있어서 버튼이 2~3초에 반응하게
+    asyncio.run(bot.run_live(LIVE_MINUTES))
+
+
+LIVE_MINUTES = 30
 
 
 if __name__ == "__main__":
