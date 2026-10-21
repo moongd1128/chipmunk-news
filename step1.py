@@ -36,7 +36,8 @@ def polish(card: dict) -> dict:
         for p in problems:
             print(f"      · {p}")
         time.sleep(4)
-        card = checker.fix_names(writer.revise_card(card, problems).model_dump())
+        # 수정본에는 원고 칸만 있으니, kind(뉴스/꿀팁) 같은 나머지 정보는 원래 값을 유지한다
+        card = checker.fix_names({**card, **writer.revise_card(card, problems).model_dump()})
     card["warnings"] = checker.find_problems(card)
     if card["warnings"]:
         print(f"   ⚠️ 끝까지 남은 문제 {len(card['warnings'])}개 (검수 때 확인)")

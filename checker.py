@@ -75,7 +75,9 @@ def fix_names(card: dict) -> dict:
             card[key] = _fix_text(card[key])
     if "title_options" in card:
         card["title_options"] = [_fix_text(t) for t in card["title_options"]]
-    card["slides"] = [{"heading": _fix_text(s["heading"]), "body": _fix_text(s["body"])} for s in card["slides"]]
+    card["slides"] = [{**s, "heading": _fix_text(s["heading"]), "body": _fix_text(s["body"]),
+                       "bad": _fix_text(s.get("bad", "")), "good": _fix_text(s.get("good", ""))}
+                      for s in card["slides"]]
     card["hashtags"] = [_fix_text(h).replace(" ", "") for h in card["hashtags"]]
     return card
 
@@ -107,12 +109,24 @@ def find_problems(card: dict) -> list[str]:
 
     for n, s in enumerate(card["slides"], 1):
         lines = [l for l in s["body"].split("\n") if l.strip()]
-        if len(lines) != 3:
+        bad, good = s.get("bad", "").strip(), s.get("good", "").strip()
+        if bool(bad) != bool(good):
+            problems.append(f"{n}번 슬라이드: ❌(bad)와 ⭕(good)는 둘 다 채우거나 둘 다 비우기")
+        if bad and good:  # ❌/⭕ 비교 슬라이드: 설명은 0~1줄, ⭕ 문장은 2~3줄
+            if len(lines) > 1:
+                problems.append(f"{n}번 슬라이드(비교): 설명(body)은 1줄 이내로")
+            if len(bad) > 30:
+                problems.append(f"{n}번 슬라이드 ❌ 문장이 너무 길어요({len(bad)}자): 30자 이내로")
+            good_lines = [l for l in good.split("\n") if l.strip()]
+            if len(good_lines) > 3:
+                problems.append(f"{n}번 슬라이드 ⭕ 문장이 {len(good_lines)}줄: 3줄 이내로")
+            lines = lines + good_lines
+        elif len(lines) != 3:
             problems.append(f"{n}번 슬라이드 본문이 {len(lines)}줄: 정확히 3줄로 나누기")
         for line in lines:
             if len(line) > MAX_LINE:
                 problems.append(f"{n}번 슬라이드 줄이 너무 길어요({len(line)}자): '{line}' → {MAX_LINE}자 이내로")
-        text = s["heading"] + " " + s["body"]
+        text = s["heading"] + " " + s["body"] + " " + bad + " " + good
         numbers = [m.strip() for m in NUMBER.findall(text)]
         if len(numbers) > MAX_NUMBERS:
             problems.append(f"{n}번 슬라이드에 숫자가 {len(numbers)}개({', '.join(numbers)}): 가장 중요한 1개만 남기기")

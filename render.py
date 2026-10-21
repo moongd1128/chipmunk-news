@@ -48,6 +48,7 @@ def build_pages(card: dict, day: str, assets: dict) -> list[str]:
                              focus=assets.get("focus"), **common)]
     for i, s in enumerate(card["slides"], 1):
         pages.append(template.render(kind="slide", index=i, heading=s["heading"], body=s["body"],
+                                     bad=s.get("bad"), good=s.get("good"),
                                      image=assets["slide"] if i == PHOTO_SLIDE else None, **common))
     pages.append(template.render(kind="end", takeaway=card["takeaway"], action_tip=card.get("action_tip"),
                                  share_target=card.get("share_target"), **common))

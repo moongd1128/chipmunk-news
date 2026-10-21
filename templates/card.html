@@ -127,6 +127,20 @@
     font-size: 48px; line-height: 1.62; font-weight: 500; box-shadow: 0 18px 40px rgba(43,29,20,.08);
   }
 
+  /* 꿀팁 ❌/⭕ 비교 슬라이드 */
+  .slide .cmp-h { margin-top: 0; margin-bottom: 44px; font-size: 64px; }
+  .cmp { border-radius: 32px; padding: 34px 44px 40px; }
+  .cmp .tag { display: inline-block; font-size: 30px; font-weight: 800; padding: 8px 18px; border-radius: 12px; }
+  .cmp p { margin-top: 18px; line-height: 1.5; }
+  .cmp.bad { background: #EFE7DD; color: #8A7A6C; }
+  .cmp.bad .tag { background: #DCD1C4; color: #6E5F52; }
+  .cmp.bad p { font-size: 40px; font-weight: 500; text-decoration: line-through; text-decoration-color: rgba(138,122,108,.6); }
+  .arrow { text-align: center; font-size: 48px; color: var(--accent); font-weight: 800; margin: 14px 0; line-height: 1; }
+  .cmp.good { background: var(--white); border: 5px solid var(--accent); box-shadow: 0 18px 40px rgba(242,118,46,.18); }
+  .cmp.good .tag { background: var(--accent); color: var(--white); }
+  .cmp.good p { font-size: 46px; font-weight: 700; color: var(--ink); }
+  .cmp-note { margin-top: 36px; font-size: 36px; line-height: 1.5; font-weight: 600; color: var(--muted); }
+
   /* 마지막 장 */
   .end .label {
     display: inline-block; align-self: flex-start;
@@ -183,11 +197,20 @@
     <h1>{{ title }}</h1>
     <p class="sub">{{ subtitle }}</p>
   {% elif kind == "slide" %}
+    {% if bad and good %}
+      {# 꿀팁 ❌/⭕ 비교 슬라이드: 사진 없이, 흔한 방식(회색) → 따라 쓸 문장(주황) #}
+      <h2 class="cmp-h">{{ heading }}</h2>
+      <div class="cmp bad"><span class="tag">❌ 이렇게 말고</span><p>{{ bad }}</p></div>
+      <div class="arrow">↓</div>
+      <div class="cmp good"><span class="tag">⭕ 이렇게 써보세요</span><p>{{ good | e | replace("\n", "<br>"|safe) }}</p></div>
+      {% if body %}<p class="cmp-note">{{ body }}</p>{% endif %}
+    {% else %}
     {% if image %}<img class="pic" src="{{ image }}">{% endif %}
     <div class="num">{{ "%02d" % index }}</div>
     <h2>{{ heading }}</h2>
     <div class="bar"></div>
     <p class="body">{{ body | e | replace("\n", "<br>"|safe) }}</p>
+    {% endif %}
   {% else %}
     <span class="label">{{ "오늘의 꿀팁 정리" if kind_tag == "tip" else "오늘의 한줄 정리" }}</span>
     <h2>{{ takeaway }}</h2>
