@@ -303,7 +303,10 @@ def build_app() -> Application:
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
         raise SystemExit("TELEGRAM_BOT_TOKEN이 없어요.")
-    app = Application.builder().token(token).build()
+    # 카드 사진 업로드는 몇 초 넘게 걸릴 수 있어서 기다리는 시간을 넉넉히 (기본 5초면 가끔 시간 초과)
+    app = (Application.builder().token(token)
+           .connect_timeout(20).read_timeout(60).write_timeout(60).media_write_timeout(120)
+           .build())
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("run", cmd_run))
     app.add_handler(CommandHandler("send", cmd_send))
