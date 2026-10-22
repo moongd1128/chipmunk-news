@@ -127,7 +127,9 @@ def main() -> None:
         print(f"   → {card['hook_title']}")
         time.sleep(4)  # 무료 등급 분당 요청 제한 배려
 
-    if tool_day:
+    if tool_day and any(c.get("kind") == "tools" for c in results):
+        print("\n🧰 오늘 'AI 사이트 모음'은 이미 있어서 건너뛰어요")
+    elif tool_day:
         print("\n🧰 오늘은 'AI 사이트 모음'도 만들어요")
         try:
             card = tools.make_card(date.today().isoformat())

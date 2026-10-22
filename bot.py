@@ -167,7 +167,7 @@ async def send_cards(bot: Bot, chat_id: str, day: str, only_pending: bool = Fals
 
 def latest_day() -> str:
     """원고가 있는 가장 최근 날짜 (없으면 오늘)."""
-    days = sorted(p.parent.name for p in Path("output").glob("*/cards.json"))
+    days = sorted(p.parent.name for p in Path("output").glob("????-??-??/cards.json"))  # 시험용 폴더는 빼고
     return days[-1] if days else date.today().isoformat()
 
 

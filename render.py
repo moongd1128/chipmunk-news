@@ -51,7 +51,9 @@ def build_pages(card: dict, day: str, assets: dict) -> list[str]:
     assets: images.cover_assets()의 결과 (표지 사진, 본문 사진, 로고)."""
     emojis = checker.EMOJI.findall(card["hook_title"])
     title = checker.EMOJI.sub("", card["hook_title"]).replace("️", "").strip()
-    common = {"date": day.replace("-", "."), "source": card["source"], "handle": HANDLE,
+    # 카드에 찍히는 날짜는 '만든 날'이 아니라 '지금(검수·발행하는 날)'.
+    # 좋은 주제를 며칠 나눠 올려도 게시물 날짜가 올리는 날과 맞게 ([발행] 직전에 다시 찍으니까)
+    common = {"date": date.today().strftime("%Y.%m.%d"), "source": card["source"], "handle": HANDLE,
               "kind_tag": card.get("kind", "news")}
 
     pages = [template.render(kind="cover", title=title, emoji=emojis[0] if emojis else DEFAULT_EMOJI,

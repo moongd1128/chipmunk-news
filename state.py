@@ -28,7 +28,7 @@ load_dotenv()
 
 BUCKET = "private"
 STATE_KEY = "state/state.tar.gz"
-KEEP_DAYS = 3
+KEEP_DAYS = 7  # 좋은 후보를 며칠 나눠 올릴 수 있게 일주일 치 보관
 
 
 def _base() -> str:
