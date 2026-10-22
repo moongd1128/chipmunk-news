@@ -47,6 +47,11 @@ NUMBER = re.compile(r"\d[\d,.]*(?:\s*(?:[만천억조]|분의|명\s*중)\s*\d*[\
 # 숫자 바로 뒤에 붙은 외국 돈만 잡는다 ("이유로"의 '유로'는 안 잡힘)
 FOREIGN_MONEY = re.compile(r"\d[\d,.]*\s*[만천억조]?\s*(?:\d[\d,.]*\s*[만천억조]?\s*)*(달러|유로|파운드|위안)")
 MAX_LINE = 24
+MAX_HOOK2 = 18  # 2번째 장(두 번째 표지) 제목 길이
+MAX_HIGHLIGHTS = 2  # 본문 한 장에 **강조** 최대 개수
+HIGHLIGHT = re.compile(r"\*\*(.+?)\*\*", re.S)
+# 소제목이 이런 명사로 뚝 끝나면 딱딱해요 ("애플 차에서 구글 AI 사용" → 말하듯이)
+NOUN_ENDINGS = ("사용", "출시", "도입", "발표", "탑재", "공개", "확대", "추가", "지원", "등장", "개발", "강화", "예정", "가능")
 MAX_NUMBERS = 2  # 슬라이드 1장에 숫자 표현 최대 개수 (비교할 때만 2개)
 
 
@@ -60,6 +65,11 @@ def easy_rule() -> str:
     return "\n".join(f"  - {w} → {e}" for w, e in HARD_WORDS.items())
 
 
+def plain(text: str) -> str:
+    """**강조** 표시를 뺀, 화면에 실제로 보이는 글자."""
+    return text.replace("**", "")
+
+
 def _fix_text(text: str) -> str:
     for right, wrongs in NAMES.items():
         for wrong in wrongs:
@@ -70,13 +80,14 @@ def _fix_text(text: str) -> str:
 def fix_names(card: dict) -> dict:
     """이름 표기를 정해진 표기로 바로 고친다 (AI 없이, 확실하게)."""
     card = dict(card)
+    # **강조**는 본문(body)에만 쓴다. 다른 칸에 잘못 붙은 별표는 AI에게 다시 시키지 않고 바로 지운다
     for key in ("hook_title", "subtitle", "takeaway", "caption", "action_tip"):
         if key in card:
-            card[key] = _fix_text(card[key])
+            card[key] = plain(_fix_text(card[key]))
     if "title_options" in card:
-        card["title_options"] = [_fix_text(t) for t in card["title_options"]]
-    card["slides"] = [{**s, "heading": _fix_text(s["heading"]), "body": _fix_text(s["body"]),
-                       "bad": _fix_text(s.get("bad", "")), "good": _fix_text(s.get("good", ""))}
+        card["title_options"] = [plain(_fix_text(t)) for t in card["title_options"]]
+    card["slides"] = [{**s, "heading": plain(_fix_text(s["heading"])), "body": _fix_text(s["body"]),
+                       "bad": plain(_fix_text(s.get("bad", ""))), "good": plain(_fix_text(s.get("good", "")))}
                       for s in card["slides"]]
     card["hashtags"] = [_fix_text(h).replace(" ", "") for h in card["hashtags"]]
     return card
@@ -108,7 +119,23 @@ def find_problems(card: dict) -> list[str]:
         problems.append(f"슬라이드가 {len(card['slides'])}장: 정확히 {want}장으로")
 
     for n, s in enumerate(card["slides"], 1):
-        lines = [l for l in s["body"].split("\n") if l.strip()]
+        heading = EMOJI.sub("", s["heading"]).strip(" ?!.~")
+        if n == 1:  # 두 번째 표지
+            if len(heading) > MAX_HOOK2:
+                problems.append(f"1번 슬라이드(두 번째 표지) 제목이 너무 길어요({len(heading)}자): {MAX_HOOK2}자 이내로")
+            if heading == EMOJI.sub("", card["hook_title"]).strip(" ?!.~"):
+                problems.append("1번 슬라이드 제목이 표지 제목과 같아요: 이 소식에서 가장 의외인 점을 살려 다른 말로")
+        if heading.endswith(NOUN_ENDINGS):
+            problems.append(f"{n}번 슬라이드 제목 '{s['heading']}'이 명사로 끝나요: 말하듯이 바꾸기"
+                            " (예: '구글 AI 탑재' → '구글 AI가 떴다', '가격 인상 발표' → '값이 또 오른대요')")
+        marks = s["body"].count("**")
+        if marks % 2:
+            problems.append(f"{n}번 슬라이드 강조 표시(**)의 짝이 안 맞아요: 단어를 **이렇게** 앞뒤로 감싸기")
+        elif marks // 2 > MAX_HIGHLIGHTS:
+            problems.append(f"{n}번 슬라이드에 강조가 {marks // 2}개: 가장 중요한 {MAX_HIGHLIGHTS}개까지만")
+        elif any(len(h) > 12 or "\n" in h for h in HIGHLIGHT.findall(s["body"])):
+            problems.append(f"{n}번 슬라이드 강조가 너무 길어요: 한 줄 안의 단어·짧은 구절만 감싸기")
+        lines = [plain(l) for l in s["body"].split("\n") if l.strip()]
         bad, good = s.get("bad", "").strip(), s.get("good", "").strip()
         if bool(bad) != bool(good):
             problems.append(f"{n}번 슬라이드: ❌(bad)와 ⭕(good)는 둘 다 채우거나 둘 다 비우기")

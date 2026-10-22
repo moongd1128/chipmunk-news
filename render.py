@@ -17,6 +17,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from jinja2 import Environment, FileSystemLoader
+from markupsafe import Markup, escape
 from playwright.sync_api import sync_playwright
 
 import checker
@@ -29,6 +30,16 @@ WIDTH, HEIGHT = 1080, 1350
 DEFAULT_EMOJI = "🌰"
 
 env = Environment(loader=FileSystemLoader("templates"), autoescape=True)
+
+
+def _lines(text: str) -> Markup:
+    """본문 글자: 줄바꿈은 <br>로, **핵심 단어**는 색 강조로 (나머지는 안전하게 이스케이프)."""
+    html = str(escape(text)).replace("\n", "<br>")
+    html = checker.HIGHLIGHT.sub(r'<b class="hl">\1</b>', html)
+    return Markup(html.replace("**", ""))  # 짝 안 맞는 별표가 화면에 보이지 않게
+
+
+env.filters["lines"] = _lines
 template = env.get_template("card.html")
 
 

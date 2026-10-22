@@ -20,7 +20,7 @@ import news
 
 load_dotenv()
 
-MAX_REVISIONS = 1  # 무료 등급은 하루 요청 수가 적어서 자동 수정은 1번만
+MAX_REVISIONS = 2  # 무료 등급은 하루 요청 수가 적어서 자동 수정은 2번까지 (문제가 남았을 때만 2번째)
 POSTS_PER_DAY = 5  # 하루에 만들 원고 수 (뉴스·꿀팁 섞어서)
 
 

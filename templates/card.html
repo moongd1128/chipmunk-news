@@ -126,6 +126,12 @@
     margin-top: 52px; background: var(--white); border-radius: 36px; padding: 56px 60px;
     font-size: 48px; line-height: 1.62; font-weight: 500; box-shadow: 0 18px 40px rgba(43,29,20,.08);
   }
+  /* 두 번째 표지 제목: 다른 본문 제목보다 크게 */
+  .slide h2.hook { font-size: 84px; line-height: 1.22; letter-spacing: -2px; }
+  .slide.with-pic h2.hook { font-size: 76px; }
+  /* 핵심 단어 강조: 주황 글씨 + 형광펜 */
+  .hl { font-weight: 800; color: var(--accent);
+    background: linear-gradient(transparent 62%, rgba(242,118,46,.18) 62%); padding: 0 2px; }
 
   /* 꿀팁 ❌/⭕ 비교 슬라이드 */
   .slide .cmp-h { margin-top: 0; margin-bottom: 44px; font-size: 64px; }
@@ -204,13 +210,14 @@
       <div class="cmp bad"><span class="tag">❌ 이렇게 말고</span><p>{{ bad }}</p></div>
       <div class="arrow">↓</div>
       <div class="cmp good"><span class="tag">⭕ 이렇게 써보세요</span><p>{{ good | e | replace("\n", "<br>"|safe) }}</p></div>
-      {% if body %}<p class="cmp-note">{{ body }}</p>{% endif %}
+      {% if body %}<p class="cmp-note">{{ body | lines }}</p>{% endif %}
     {% else %}
     {% if image %}<img class="pic" src="{{ image }}">{% endif %}
     <div class="num">{{ "%02d" % index }}</div>
-    <h2>{{ heading }}</h2>
+    {# 2번째 장 = 두 번째 표지: 표지만 보고 지나간 사람에게 인스타가 다시 보여주는 장이라 제목을 크게 #}
+    <h2 class="{{ 'hook' if index == 1 else '' }}">{{ heading }}</h2>
     <div class="bar"></div>
-    <p class="body">{{ body | e | replace("\n", "<br>"|safe) }}</p>
+    <p class="body">{{ body | lines }}</p>
     {% endif %}
   {% else %}
     <span class="label">{{ "오늘의 꿀팁 정리" if kind_tag == "tip" else "오늘의 한줄 정리" }}</span>
