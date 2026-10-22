@@ -35,10 +35,13 @@
 - 릴스: 표지 확대/축소 효과 없앰(가만히), 본문 한 장 2.8초 → 3.8초 (표지·마지막 장은 그대로)
 
 ### ✅ 프로필 링크 페이지 = 원문 모음 (2026-10-23 완료)
-- 주소: https://moongd1128.github.io/chipmunk-news/
+- 주소: **https://chipmunk-news.github.io/** (GitHub 단체 chipmunk-news의 저장소 chipmunk-news.github.io)
+  - pages.yml이 PAGES_TOKEN(단체 저장소 Contents 쓰기 전용)으로 덮어써서 올림
+  - ⚠️ PAGES_TOKEN은 1년 뒤(2027-10경) 만료 → 새로 만들어 GitHub Secrets의 PAGES_TOKEN 교체
+  - 예전 주소 https://moongd1128.github.io/chipmunk-news/ 도 같이 갱신 중 (인스타 링크 바꾼 뒤 정리해도 됨)
 - [발행] 성공 → data/links.json 기록(linkpage.py) → 버튼 처리 끝에 pages.yml 실행 → 페이지 갱신 (+1시간마다 예비)
 - 캡션 출처 줄에 "(원문 링크는 프로필에 🔗)" 추가
-- 사용자 할 일: 인스타 프로필 편집 → 링크 → 외부 링크 추가 (위 주소, 제목 "원문 모음")
+- 사용자 할 일: 인스타 프로필 편집 → 링크 → 외부 링크 추가 (https://chipmunk-news.github.io/, 제목 "원문 모음")
 
 ### ✅ [발행] 때 표지를 스토리에도 자동 공유 (2026-10-23, 실제 발행 전)
 - 순서: 캐러셀 → 스토리(표지 세로 사진) → 릴스. 스토리가 실패해도 캐러셀·릴스는 그대로
