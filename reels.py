@@ -90,6 +90,17 @@ def make_reel(card_dir: Path, out: Path | None = None, bgm: Path | None = None) 
     return out
 
 
+def make_story_image(card_dir: Path) -> Path:
+    """스토리용 세로 사진(1080x1920): 릴스 첫 장면처럼 흐린 표지를 배경에 깔고 카드를 가운데에."""
+    cover = card_dir / "01.jpg"
+    out = card_dir / "story.jpg"
+    filters = (f"[0:v]split[a][b];[a]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
+               f"boxblur=40:2,eq=brightness=-0.12[bg];[b]scale={W}:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2")
+    subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-i", str(cover), "-filter_complex", filters,
+                    "-frames:v", "1", "-q:v", "2", str(out)], check=True)
+    return out
+
+
 def make_all(day: str, only: int | None = None) -> list[Path]:
     day_dir = Path("output") / day
     # 같은 날 영상끼리 곡이 겹치지 않게 섞어서 차례로 쓴다

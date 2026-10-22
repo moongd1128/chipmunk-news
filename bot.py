@@ -13,7 +13,7 @@
   ✏️ 다른 제목   AI가 뽑은 제목 후보 3개(질문형·숫자형·반전형) 중 다음 것으로
   🎨 AI로 그리기 Gemini로 표지 그림 그리기 (결제 등록 전에는 안 돼요)
   👀 전체 보기   6장 전부 미리보기
-  ✅ 발행        한 번 더 확인한 뒤 인스타에 캐러셀 + 릴스로 올리기 (publisher.py)
+  ✅ 발행        한 번 더 확인한 뒤 인스타에 캐러셀 + 스토리(표지) + 릴스로 올리기 (publisher.py)
   🎬 릴스 다시   캐러셀은 올라갔는데 릴스만 실패했을 때 릴스만 다시 올리기
   ❌ 건너뛰기    이 카드는 안 올리기
 """
@@ -201,6 +201,15 @@ async def _publish_reel(day: str, n: int) -> tuple[dict, str]:
     return load_cards(day)[n - 1], note
 
 
+async def _publish_story(day: str, n: int) -> str:
+    """표지를 스토리로 올리고 메시지에 붙일 말을 돌려준다. 실패해도 캐러셀은 그대로 둔다 (스토리는 덤)."""
+    try:
+        await asyncio.to_thread(publisher.publish_story, day, n)
+        return ""
+    except Exception as e:  # noqa: BLE001 - 스토리는 없어도 되니 알리기만 하고 넘어간다
+        return f"\n\n⚠️ 스토리는 실패했어요: {e}"
+
+
 async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     if not _allowed(update):
@@ -265,8 +274,10 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 card["status"], note = "pending", f"\n\n❌ 발행 실패: {e}"
         save_cards(day, cards)
         if card["status"] == "published":
-            await query.edit_message_caption(caption(card, n, len(cards)) + "\n\n🎬 릴스 올리는 중... (2~4분)")
+            await query.edit_message_caption(caption(card, n, len(cards)) + "\n\n📱 스토리·🎬 릴스 올리는 중... (2~4분)")
+            story_note = await _publish_story(day, n)  # 팔로워에게 새 게시물 알리기 + 하이라이트 재료
             card, note = await _publish_reel(day, n)
+            note += story_note
         await _sync()
         await query.edit_message_caption(caption(card, n, len(cards)) + note, reply_markup=keyboard(day, n, card))
         return

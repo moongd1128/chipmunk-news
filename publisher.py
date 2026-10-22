@@ -16,6 +16,7 @@
   python publisher.py 2026-10-20 3        # 그날 3번 카드를 캐러셀로 발행
   python publisher.py reel 2026-10-20 3   # 그날 3번 카드를 릴스로 발행
   python publisher.py reel-test 2026-10-20 3   # 릴스를 인스타에 '준비'만 시켜보기 (발행 안 함)
+  python publisher.py story-test 2026-10-20 3  # 스토리를 인스타에 '준비'만 시켜보기 (발행 안 함)
 """
 import json
 import os
@@ -202,6 +203,30 @@ def publish_reel(day: str, n: int) -> str:
     return link
 
 
+def _prepare_story(day: str, n: int) -> str:
+    """표지로 스토리용 세로 사진을 만들어 인스타에 올릴 준비를 시킨다 (준비 번호를 돌려줌, 발행은 안 함)."""
+    import reels
+
+    image = reels.make_story_image(Path("output") / day / f"card_{n:02d}")
+    url = upload_public(image, f"{day}/card_{n:02d}/{int(time.time())}_story.jpg")
+    cid = _ig("POST", f"{me()['user_id']}/media", media_type="STORIES", image_url=url)["id"]
+    _wait_ready(cid, "스토리 사진")
+    return cid
+
+
+def publish_story(day: str, n: int) -> str:
+    """그날 n번 카드의 표지를 스토리로 올린다. (API로 올린 스토리엔 '게시물 보기' 스티커를 못 붙여요)"""
+    refresh_token_if_old()
+    print("📱 스토리 올리는 중...")
+    media_id = _ig("POST", f"{me()['user_id']}/media_publish", creation_id=_prepare_story(day, n))["id"]
+    cards_file = Path("output") / day / "cards.json"
+    cards = json.loads(cards_file.read_text(encoding="utf-8"))
+    cards[n - 1]["story"] = {"media_id": media_id, "at": int(time.time())}
+    cards_file.write_text(json.dumps(cards, ensure_ascii=False, indent=2), encoding="utf-8")
+    print("✅ 스토리 발행 완료")
+    return media_id
+
+
 def check() -> None:
     """키가 다 있는지, 인스타 계정과 저장소에 연결되는지만 확인한다 (게시물은 안 올림)."""
     for k in ("INSTAGRAM_ACCESS_TOKEN", "SUPABASE_URL", "SUPABASE_KEY"):
@@ -227,6 +252,8 @@ if __name__ == "__main__":
         check()
     elif len(sys.argv) == 4 and sys.argv[1] == "reel":
         publish_reel(sys.argv[2], int(sys.argv[3]))
+    elif len(sys.argv) == 4 and sys.argv[1] == "story-test":
+        print(f"✅ 인스타가 스토리 사진을 받아줬어요 (준비 번호 {_prepare_story(sys.argv[2], int(sys.argv[3]))}, 발행은 안 함)")
     elif len(sys.argv) == 4 and sys.argv[1] == "reel-test":
         print(f"✅ 인스타가 영상을 받아줬어요 (준비 번호 {_prepare_reel(sys.argv[2], int(sys.argv[3]))}, 발행은 안 함)")
     elif len(sys.argv) == 3:
