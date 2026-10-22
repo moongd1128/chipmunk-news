@@ -296,7 +296,7 @@ def write_card_news(article: dict, body: str) -> CardNews:
   (빈 줄)
   📩 (share_target)에게 보내주세요 ← 괄호 부분을 share_target으로 채워서
   (빈 줄)
-  출처: {article['source']}
+  출처: {article['source']} (원문 링크는 프로필에 🔗)
   {FOLLOW_LINE}
 - hashtags: 한국어 위주 8~10개, '#' 포함
 {_image_rule()}
@@ -363,7 +363,7 @@ def write_tip_card(article: dict, body: str) -> CardNews:
   📌 저장해두고 따라 해보세요
   📩 (share_target)에게 보내주세요 ← 괄호 부분을 share_target으로 채워서
   (빈 줄)
-  출처: {article['source']} 공식 블로그
+  출처: {article['source']} 공식 블로그 (원문 링크는 프로필에 🔗)
   {FOLLOW_LINE}
 - hashtags: 한국어 위주 8~10개, '#' 포함 (#AI꿀팁 #AI활용법 포함)
 {_image_rule()}
