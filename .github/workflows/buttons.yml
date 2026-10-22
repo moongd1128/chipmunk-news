@@ -20,7 +20,7 @@ jobs:
   # 1) 눌린 버튼이 있는지만 가볍게 확인 (없으면 설치 없이 바로 끝 → 빠르고 가벼움)
   #    여기엔 줄서기(concurrency)를 안 걸어요. 걸면 5분마다 오는 확인이 아침 카드 만들기를 밀어낼 수 있어서
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # 26으로 바뀌는 중이라 고정
     timeout-minutes: 2
     permissions:
       actions: read   # 다른 실행이 돌고 있는지 보려고
@@ -51,7 +51,7 @@ jobs:
   buttons:
     needs: check
     if: needs.check.outputs.has == '1'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # 26으로 바뀌는 중이라 고정
     timeout-minutes: 40   # 버튼 처리 + 20분 빠른 모드
     concurrency:
       group: chipmunk-state   # 아침 카드 만들기와 동시에 돌지 않게 (같은 상태를 쓰니까)
@@ -76,20 +76,23 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: 패키지 설치
-        id: pip
-        run: |
-          pip install -r requirements.txt
-          echo "pw=$(python -c 'import importlib.metadata as m; print(m.version("playwright"))')" >> "$GITHUB_OUTPUT"
-      # 크롬(191MB)은 한 번 받아두고 다시 씀. 매번 받다가 다운로드가 16분 멈춘 적이 있어서
+        timeout-minutes: 5
+        run: pip install -r requirements.txt
+      # 크롬은 따로 받지 않고 GitHub에 이미 깔린 크롬을 쓴다 (render.py)
+      # → 크롬(191MB)·우분투 패키지를 받다가 10~16분씩 멈추던 일이 없어짐
+      # 글꼴·이모지(인터넷에서 받는 것)는 한 번 받아두고 다시 씀
       - uses: actions/cache@v4
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ steps.pip.outputs.pw }}
-      - name: 크롬·한글 글꼴 설치
-        timeout-minutes: 10
-        run: |
-          python -m playwright install --with-deps chromium
-          sudo apt-get install -y -qq fonts-noto-cjk > /dev/null
+          path: assets/cache
+          key: render-cache-${{ github.run_id }}
+          restore-keys: render-cache-
+      # 한글 예비 글꼴 (카드 글꼴 Pretendard가 안 받아질 때만 쓰임). 느리면 건너뛴다
+      - name: 한글 예비 글꼴
+        timeout-minutes: 3
+        continue-on-error: true
+        run: sudo apt-get install -y -qq --no-install-recommends fonts-noto-cjk > /dev/null
+      - name: 크롬 켜지는지 확인
+        run: python -c "from playwright.sync_api import sync_playwright as p; b = p().start().chromium.launch(channel='chrome'); print('크롬 OK', b.version)"
       - name: 버튼 처리
         run: python bot_once.py
         env:

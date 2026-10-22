@@ -70,7 +70,9 @@ class _Shooter:
     def _ensure_page(self):
         if self._page is None:
             self._pw = sync_playwright().start()
-            self._browser = self._pw.chromium.launch()
+            # GitHub Actions에는 크롬이 이미 깔려 있어서 그걸 쓴다 (191MB 크롬을 받다가 멈추는 일이 잦아서)
+            channel = "chrome" if os.environ.get("GITHUB_ACTIONS") else None
+            self._browser = self._pw.chromium.launch(channel=channel)
             self._page = self._browser.new_page(viewport={"width": WIDTH, "height": HEIGHT})
             self._page.route(re.compile(r"(jsdelivr\.net|fonts\.googleapis\.com|fonts\.gstatic\.com)"), _cached_route)
         return self._page
