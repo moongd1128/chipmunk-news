@@ -18,7 +18,7 @@ import imageio_ffmpeg
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 BGM_DIR = Path("assets/bgm")
 COVER_SEC = 2.2  # 표지는 짧게 (첫 3초 안에 본문이 시작되도록)
-SLIDE_SEC = 2.8  # 본문 한 장
+SLIDE_SEC = 3.8  # 본문 한 장 (빨리 보고 싶은 사람은 인스타 2배속을 쓰니 넉넉하게)
 END_SEC = 3.4    # 마지막 장 (정리·공유 문구를 읽을 시간)
 FADE_SEC = 0.4   # 장 사이 전환 시간
 W, H = 1080, 1920
@@ -26,10 +26,6 @@ CARD_BG = "0xFFF7EC"  # 카드 배경색 (templates/card.html의 --bg)
 
 # 영상마다 하나씩 무작위로 골라서, 매일 봐도 같은 영상처럼 느껴지지 않게
 TRANSITIONS = ["fade", "smoothleft", "smoothup", "slideleft", "wipeleft", "fadeblack"]
-COVER_MOTIONS = {
-    "zoom_in": "1+0.06*on/{f}",
-    "zoom_out": "1.06-0.06*on/{f}",
-}
 
 
 def make_reel(card_dir: Path, out: Path | None = None, bgm: Path | None = None) -> Path:
@@ -41,24 +37,19 @@ def make_reel(card_dir: Path, out: Path | None = None, bgm: Path | None = None) 
     durations = [COVER_SEC] + [SLIDE_SEC] * (n - 2) + [END_SEC]
     total = sum(durations) - (n - 1) * FADE_SEC
     transition = random.choice(TRANSITIONS)
-    motion = random.choice(list(COVER_MOTIONS))
-    print(f"   🎞️ 전환: {transition} · 표지 움직임: {motion}")
+    print(f"   🎞️ 전환: {transition}")
 
     args = [FFMPEG, "-y", "-loglevel", "error"]
     for s, d in zip(slides, durations):
         args += ["-loop", "1", "-t", f"{d}", "-framerate", "30", "-i", str(s)]
 
-    # 표지: 흐리게 키운 표지를 배경으로 깔고, 카드(1080x1350)는 가운데서 천천히 확대/축소 (첫 프레임부터 움직임)
+    # 표지: 흐리게 키운 표지를 배경으로 깔고, 카드(1080x1350)는 가운데에 가만히 (확대/축소 효과는 사용자 요청으로 뺌)
     # 본문·마지막 장: 카드 배경색과 같은 크림색으로 위아래를 채운다 (흐리게 하면 얼룩처럼 보여서)
-    frames = int(COVER_SEC * 30)
-    zoom = COVER_MOTIONS[motion].format(f=frames)
     parts = [
         "[0:v]split[a0][b0];"
         f"[a0]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
         "boxblur=40:2,eq=brightness=-0.12[bg0];"
-        # 2배로 키운 뒤 확대/축소해야 떨림 없이 부드럽다
-        f"[b0]scale={W * 2}:-2,zoompan=z='{zoom}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
-        f":d=1:s={W}x1350:fps=30[fg0];"
+        f"[b0]scale={W}:-2[fg0];"
         "[bg0][fg0]overlay=(W-w)/2:(H-h)/2,format=yuv420p,setsar=1[v0]"
     ]
     for i in range(1, n):

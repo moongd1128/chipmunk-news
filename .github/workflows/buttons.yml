@@ -22,6 +22,8 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    permissions:
+      actions: read   # 다른 실행이 돌고 있는지 보려고
     outputs:
       has: ${{ steps.check.outputs.has }}
     steps:
@@ -29,8 +31,14 @@ jobs:
         id: check
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.live && '1' || '' }}
         run: |
+          # 버튼 처리나 아침 카드가 이미 돌고 있으면 그쪽이 버튼을 처리하니 텔레그램을 건드리지 않고 쉼
+          # (여기서 텔레그램에 물어보면 깨어 있는 봇의 연결을 끊어서 버튼이 늦어져요)
+          busy=$(gh run list -R "$GITHUB_REPOSITORY" -s in_progress --json databaseId,workflowName \
+            --jq "[.[] | select(.databaseId != $GITHUB_RUN_ID)] | length")
+          if [ "$busy" != "0" ] && [ -z "$FORCE" ]; then echo "다른 실행이 깨어 있어서 쉼"; exit 0; fi
           resp=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?timeout=0&limit=1")
           ok=$(echo "$resp" | jq -r '.ok')
           count=$(echo "$resp" | jq -r '.result | length // 0')
@@ -68,8 +76,18 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: 패키지 설치
+        id: pip
         run: |
           pip install -r requirements.txt
+          echo "pw=$(python -c 'import importlib.metadata as m; print(m.version("playwright"))')" >> "$GITHUB_OUTPUT"
+      # 크롬(191MB)은 한 번 받아두고 다시 씀. 매번 받다가 다운로드가 16분 멈춘 적이 있어서
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.pip.outputs.pw }}
+      - name: 크롬·한글 글꼴 설치
+        timeout-minutes: 10
+        run: |
           python -m playwright install --with-deps chromium
           sudo apt-get install -y -qq fonts-noto-cjk > /dev/null
       - name: 버튼 처리

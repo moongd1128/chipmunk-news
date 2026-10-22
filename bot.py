@@ -225,6 +225,16 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 f.close()
         return
 
+    # 올리는 데 몇 분 걸려서 [발행]을 또 누르기 쉬운데, 버튼은 차례로 처리되니
+    # 앞의 것이 끝난 뒤 같은 카드가 또 올라가지 않게 막는다 (2026-10-22 4번 카드가 두 번 올라감)
+    if action in ("ok", "publish") and card.get("status") == "published":
+        await _answer(query, "이미 인스타에 올라간 카드예요")
+        try:
+            await query.edit_message_caption(caption(card, n, len(cards)), reply_markup=keyboard(day, n, card))
+        except BadRequest:  # 이미 같은 내용이면 텔레그램이 '바뀐 게 없다'고 거절함
+            pass
+        return
+
     if action == "ok":  # 실수로 눌러도 바로 올라가지 않게 한 번 더 묻기
         await _answer(query)
         await query.edit_message_reply_markup(InlineKeyboardMarkup([[
@@ -262,6 +272,9 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     if action == "reel":
+        if card.get("reel"):
+            await _answer(query, "릴스도 이미 올라갔어요")
+            return
         await _answer(query, "릴스 올리는 중... (2~4분)")
         await query.edit_message_caption(caption(card, n, len(cards)) + "\n\n🎬 릴스 올리는 중... (2~4분)")
         card, note = await _publish_reel(day, n)
