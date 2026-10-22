@@ -160,6 +160,12 @@ def publish_carousel(day: str, n: int) -> str:
 
     card["published"] = {"media_id": media_id, "permalink": link, "at": int(time.time())}
     (Path("output") / day / "cards.json").write_text(json.dumps(cards, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:  # 프로필 링크 페이지(원문 모음)에 추가. 실패해도 발행은 이미 끝났으니 알리기만
+        import linkpage
+
+        linkpage.record(day, n, card, urls[0])
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠️ 링크 페이지 기록 실패: {e}")
     print(f"✅ 발행 완료: {link}")
     return link
 

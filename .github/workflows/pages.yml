@@ -1,0 +1,47 @@
+# 프로필 링크 페이지(원문 모음)를 GitHub Pages에 올린다 → https://moongd1128.github.io/chipmunk-news/
+#
+# 누가 깨우나요?
+#   - 버튼 처리(buttons.yml)에서 [발행]이 성공하면 바로
+#   - 1시간마다 예비로 (PC 봇에서 발행했을 때도 반영되게)
+name: link page
+
+on:
+  schedule:
+    - cron: "40 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  pages:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 패키지 설치 (가벼운 것만)
+        run: pip install requests python-dotenv
+      - name: 발행 기록 받아서 페이지 만들기
+        run: |
+          python state.py pull
+          python linkpage.py build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

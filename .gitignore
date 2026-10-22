@@ -18,3 +18,7 @@ assets/bgm/
 # 작업용 메모 (개인 사정이 적혀 있어서 공개 저장소에 올리지 않음)
 comments_*.md
 CLAUDE.md
+
+# 프로필 링크 페이지 (GitHub Actions가 매번 새로 만듦)
+site/
+.links_changed
