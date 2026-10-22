@@ -51,6 +51,17 @@ MAX_HOOK2 = 18  # 2번째 장(두 번째 표지) 제목 길이
 MAX_HIGHLIGHTS = 2  # 본문 한 장에 **강조** 최대 개수
 HIGHLIGHT = re.compile(r"\*\*(.+?)\*\*", re.S)
 # 소제목이 이런 명사로 뚝 끝나면 딱딱해요 ("애플 차에서 구글 AI 사용" → 말하듯이)
+# AI 사이트 모음: 이런 말은 사이트 글에 근거가 있을 때만 쓸 수 있다 (AI가 그럴듯하게 지어내기 쉬운 것)
+CLAIMS = {
+    "무료": re.compile(r"free|무료|\$0|no cost", re.I),
+    "가입 없이": re.compile(r"no sign.?up|without (an )?(account|sign)|no account|no registration|가입 없이|no login", re.I),
+    "로그인 없이": re.compile(r"no login|no sign.?in|without (logging|sign)|no account|로그인 없이", re.I),
+    "한국어": re.compile(r"korean|한국어", re.I),
+    "광고 없": re.compile(r"no ads|ad.?free|광고 없", re.I),
+    "무제한": re.compile(r"unlimited|무제한", re.I),
+}
+TOOL_HEADING_MAX = 24  # 사이트 장 큰 글씨 (2줄 합쳐서)
+TOOL_NOTE_MAX = 32
 NOUN_ENDINGS = ("사용", "출시", "도입", "발표", "탑재", "공개", "확대", "추가", "지원", "등장", "개발", "강화", "예정", "가능")
 MAX_NUMBERS = 2  # 슬라이드 1장에 숫자 표현 최대 개수 (비교할 때만 2개)
 
@@ -86,11 +97,39 @@ def fix_names(card: dict) -> dict:
             card[key] = plain(_fix_text(card[key]))
     if "title_options" in card:
         card["title_options"] = [plain(_fix_text(t)) for t in card["title_options"]]
-    card["slides"] = [{**s, "heading": plain(_fix_text(s["heading"])), "body": _fix_text(s["body"]),
+    # AI 사이트 모음은 큰 글씨(heading)가 본문 역할이라 거기 강조를 쓰고, 작은 글씨(body)엔 안 쓴다
+    tools = card.get("kind") == "tools"
+    head, body = (_fix_text, lambda t: plain(_fix_text(t))) if tools else (lambda t: plain(_fix_text(t)), _fix_text)
+    card["slides"] = [{**s, "heading": head(s["heading"]), "body": body(s["body"]),
                        "bad": plain(_fix_text(s.get("bad", ""))), "good": plain(_fix_text(s.get("good", "")))}
                       for s in card["slides"]]
     card["hashtags"] = [_fix_text(h).replace(" ", "") for h in card["hashtags"]]
     return card
+
+
+def _tool_problems(n: int, s: dict, card: dict) -> list[str]:
+    """AI 사이트 모음의 사이트 장 하나: 길이·강조·명사 끝맺음 + '무료' 같은 말의 근거."""
+    out = []
+    lines = [plain(l).strip() for l in s["heading"].split("\n") if l.strip()]
+    if len(lines) > 2:
+        out.append(f"{n}번 사이트 큰 글씨가 {len(lines)}줄: 2줄 이내로")
+    if len("".join(lines)) > TOOL_HEADING_MAX:
+        out.append(f"{n}번 사이트 큰 글씨가 너무 길어요: 두 줄 합쳐 {TOOL_HEADING_MAX}자 이내로")
+    marks = s["heading"].count("**")
+    if marks % 2 or marks // 2 > MAX_HIGHLIGHTS:
+        out.append(f"{n}번 사이트 큰 글씨의 강조(**)는 핵심 단어 1개만, 앞뒤 짝 맞추기")
+    if lines and EMOJI.sub("", lines[-1]).strip(" ?!.~").endswith(NOUN_ENDINGS + ("제공",)):
+        out.append(f"{n}번 사이트 큰 글씨가 명사로 끝나요: 말하듯이 (예: '퀴즈 생성 지원' → '자료가 퀴즈로 바뀐다')")
+    if len(s["body"]) > TOOL_NOTE_MAX or "\n" in s["body"].strip():
+        out.append(f"{n}번 사이트 작은 글씨는 한 줄 {TOOL_NOTE_MAX - 2}자 이내로")
+    sites = card.get("sites", [])
+    k = s.get("site_index", -1)
+    page = sites[k]["page_text"] if 0 <= k < len(sites) else ""
+    said = plain(s["heading"]) + " " + s["body"]
+    for word, evidence in CLAIMS.items():
+        if word in said and not evidence.search(page):
+            out.append(f"{n}번 사이트({s.get('site')})에 '{word}'라고 썼는데 사이트 글에 근거가 없어요: 빼거나 사실대로 바꾸기")
+    return out
 
 
 def find_problems(card: dict) -> list[str]:
@@ -114,11 +153,15 @@ def find_problems(card: dict) -> list[str]:
     if len(card.get("share_target", "")) > 12:
         problems.append("share_target이 너무 길어요: 12자 이내로")
 
-    want = 5 if card.get("kind") == "tip" else 4  # 꿀팁은 공감 1 + 방법 3 + 마무리 1
+    # 꿀팁은 공감 1 + 방법 3 + 마무리 1, AI 사이트 모음은 사이트 5개
+    want = 5 if card.get("kind") in ("tip", "tools") else 4
     if len(card["slides"]) != want:
         problems.append(f"슬라이드가 {len(card['slides'])}장: 정확히 {want}장으로")
 
     for n, s in enumerate(card["slides"], 1):
+        if card.get("kind") == "tools":
+            problems += _tool_problems(n, s, card)
+            continue
         heading = EMOJI.sub("", s["heading"]).strip(" ?!.~")
         if n == 1:  # 두 번째 표지
             if len(heading) > MAX_HOOK2:

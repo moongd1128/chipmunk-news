@@ -37,6 +37,8 @@ def record(day: str, n: int, card: dict, cover_url: str) -> None:
         "title": card["hook_title"], "subtitle": card.get("subtitle", ""),
         "source": card["source"], "link": card["link"], "cover": cover_url,
         "post": card.get("published", {}).get("permalink", ""),
+        # AI 사이트 모음이면 소개한 사이트들 링크
+        "sites": [{"name": s["site"], "url": s["url"]} for s in card["slides"]] if card.get("kind") == "tools" else [],
         "at": card.get("published", {}).get("at") or int(time.time()),  # 인스타에 올라간 시각 (최신이 위로)
     })
     LINKS_FILE.parent.mkdir(exist_ok=True)
@@ -61,9 +63,21 @@ def backfill() -> None:
 
 
 def _item_html(i: dict) -> str:
-    tag = "💡 꿀팁" if i["kind"] == "tip" else "📰 뉴스"
+    tag = {"tip": "💡 꿀팁", "tools": "🧰 AI 사이트 모음"}.get(i["kind"], "📰 뉴스")
     source = f"{i['source']} 공식 글" if i["kind"] == "tip" else i["source"]
     post = (f'<a class="btn ghost" href="{escape(i["post"])}">인스타에서 보기</a>' if i.get("post") else "")
+    if i.get("sites"):  # 사이트 모음은 사이트마다 버튼
+        links = "".join(f'<a class="btn" href="{escape(s["url"])}">{escape(s["name"])}</a>' for s in i["sites"])
+        return f"""
+    <article class="item">
+      <img class="cover" src="{escape(i['cover'])}" alt="" loading="lazy">
+      <div class="info">
+        <span class="tag {escape(i['kind'])}">{tag}</span>
+        <h2>{escape(i['title'])}</h2>
+        <p class="sub">{escape(i['subtitle'])}</p>
+        <div class="btns">{links}{post}</div>
+      </div>
+    </article>"""
     return f"""
     <article class="item">
       <img class="cover" src="{escape(i['cover'])}" alt="" loading="lazy">

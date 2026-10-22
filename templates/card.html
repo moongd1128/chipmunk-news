@@ -147,6 +147,37 @@
   .cmp.good p { font-size: 46px; font-weight: 700; color: var(--ink); }
   .cmp-note { margin-top: 36px; font-size: 36px; line-height: 1.5; font-weight: 600; color: var(--muted); }
 
+  /* AI 사이트 모음: 사이트 한 장 */
+  .site .content { justify-content: flex-start; padding-top: 44px; padding-bottom: 0; }
+  .site-top { display: flex; align-items: baseline; gap: 20px; }
+  .site-num { font-size: 40px; font-weight: 800; color: var(--accent); letter-spacing: -1px; }
+  .site-num small { font-size: 26px; color: var(--muted); font-weight: 700; }
+  .site-domain { font-size: 56px; font-weight: 800; letter-spacing: -1.5px; }
+  .site-shot { margin-top: 32px; border-radius: 28px; overflow: hidden; background: var(--white);
+    box-shadow: 0 22px 48px rgba(43,29,20,.16); border: 2px solid rgba(43,29,20,.08); }
+  .site-shot .bar3 { height: 40px; background: #F3ECE3; display: flex; align-items: center; gap: 10px; padding: 0 18px; }
+  .site-shot .bar3 i { width: 14px; height: 14px; border-radius: 50%; background: #DCCFC0; }
+  .site-shot img { display: block; width: 100%; height: 470px; object-fit: cover; object-position: top center; }
+  .site-h { margin-top: 48px; font-size: 76px; line-height: 1.24; font-weight: 800; letter-spacing: -2px; }
+  .site-note { margin-top: 26px; font-size: 38px; line-height: 1.45; font-weight: 600; color: var(--muted); }
+  .end .site-list { margin-top: 36px; list-style: none; counter-reset: s; background: var(--white);
+    border-radius: 32px; padding: 26px 40px; box-shadow: 0 18px 40px rgba(43,29,20,.08); }
+  .end .site-list li { counter-increment: s; display: flex; align-items: baseline; gap: 18px; padding: 10px 0;
+    font-size: 38px; border-bottom: 2px dashed var(--soft); }
+  .end .site-list li:last-child { border-bottom: 0; }
+  .end .site-list li::before { content: counter(s); color: var(--accent); font-weight: 800; width: 34px; }
+  .end .site-list b { font-weight: 800; }
+  /* 사이트 모음 마지막 장은 목록이 길어서 전체를 조금씩 줄인다 */
+  .tools.end .content { padding-bottom: 0; }
+  .tools.end h2 { margin-top: 26px; font-size: 56px; }
+  .tools.end .site-list { margin-top: 28px; padding: 14px 36px; }
+  .tools.end .site-list li { padding: 7px 0; font-size: 34px; }
+  .tools.end .share { margin-top: 26px; font-size: 32px; }
+  .tools.end .cta { margin-top: 26px; padding: 34px 44px; }
+  .tools.end .cta .icon { font-size: 76px; }
+  .tools.end .cta .t1 { font-size: 38px; }
+  .end .site-list span { color: var(--muted); font-size: 30px; font-weight: 600; }
+
   /* 마지막 장 */
   .end .label {
     display: inline-block; align-self: flex-start;
@@ -182,7 +213,7 @@
   {% if vs %}<div class="shade"></div>
   {% elif logos[0].svg %}<div class="watermark">{{ logos[0].svg | safe }}</div>{% endif %}
 {% endif %}
-<div class="page {{ kind }} {{ 'with-pic' if kind == 'slide' and image else '' }}">
+<div class="page {{ kind }} {{ 'with-pic' if kind == 'slide' and image else '' }} {{ 'tools' if kind_tag == 'tools' else '' }}">
   <div class="top">
     <span class="brand">🐿️ 칩다람 · AI 뉴스·꿀팁</span>
     <span class="date">{{ date }}</span>
@@ -201,6 +232,7 @@
       </div>
     {% elif not image %}<div class="emoji">{{ emoji }}</div>{% endif %}
     {% if kind_tag == "tip" %}<span class="tip-tag">💡 AI 꿀팁 · 저장해두세요</span>{% endif %}
+    {% if kind_tag == "tools" %}<span class="tip-tag">🔖 AI 사이트 모음 · 저장해두세요</span>{% endif %}
     <h1>{{ title }}</h1>
     <p class="sub">{{ subtitle }}</p>
   {% elif kind == "slide" %}
@@ -219,10 +251,19 @@
     <div class="bar"></div>
     <p class="body">{{ body | lines }}</p>
     {% endif %}
+  {% elif kind == "site" %}
+    {# AI 사이트 모음: 사이트 하나 = 한 장 #}
+    <div class="site-top"><span class="site-num">{{ "%02d" % index }}<small>/{{ "%02d" % total }}</small></span>
+      <span class="site-domain">{{ domain }}</span></div>
+    {% if shot %}<div class="site-shot"><div class="bar3"><i></i><i></i><i></i></div><img src="{{ shot }}"></div>{% endif %}
+    <h2 class="site-h">{{ heading | lines }}</h2>
+    <p class="site-note">{{ body }}</p>
   {% else %}
-    <span class="label">{{ "오늘의 꿀팁 정리" if kind_tag == "tip" else "오늘의 한줄 정리" }}</span>
+    <span class="label">{{ "오늘의 꿀팁 정리" if kind_tag == "tip" else "오늘의 사이트 정리" if kind_tag == "tools" else "오늘의 한줄 정리" }}</span>
     <h2>{{ takeaway }}</h2>
-    {% if action_tip %}
+    {% if sites %}
+    <ol class="site-list">{% for name, dom in sites %}<li><b>{{ name }}</b><span>{{ dom }}</span></li>{% endfor %}</ol>
+    {% elif action_tip %}
     <div class="tip"><span class="tip-q">💡 그래서 나는?</span><p>{{ action_tip }}</p></div>
     {% endif %}
     {% if share_target %}<p class="share">📩 <b>{{ share_target }}</b>에게 보내주세요</p>{% endif %}
@@ -237,7 +278,7 @@
   </div>
 
   <div class="bottom">
-    <span>{% if kind == "cover" %}<span class="swipe">넘겨서 보기 →</span>{% else %}출처: {{ source }}{% endif %}</span>
+    <span>{% if kind == "cover" %}<span class="swipe">넘겨서 보기 →</span>{% elif kind == "site" %}화면: {{ domain }}{% elif kind_tag == "tools" %}{{ date }} 기준 · 링크는 프로필에{% else %}출처: {{ source }}{% endif %}</span>
     <span>{{ handle }}</span>
   </div>
 </div>

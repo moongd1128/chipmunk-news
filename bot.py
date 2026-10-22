@@ -71,7 +71,9 @@ def caption(card: dict, n: int, total: int) -> str:
     ranked = info.get("ranked", [])
     photo_pos = f" ({info.get('pos', 0) + 1}/{len(ranked)})" if info.get("mode") == "photo" and ranked else ""
     warn = f"\n⚠️ 확인 필요: {len(card['warnings'])}건" if card.get("warnings") else ""
-    kind = "💡 꿀팁" if card.get("kind") == "tip" else "📰 뉴스"
+    kind = {"tip": "💡 꿀팁", "tools": "🧰 AI 사이트 모음"}.get(card.get("kind"), "📰 뉴스")
+    if card.get("kind") == "tools":  # 출처 대신 소개하는 사이트 주소들
+        card = {**card, "source": "사이트", "link": ", ".join(s["domain"] for s in card["slides"])}
     return (
         f"[{n}/{total}] {kind} · {card['hook_title']}\n"
         f"{card['subtitle']}\n\n"

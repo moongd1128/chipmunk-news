@@ -1,6 +1,7 @@
 """1단계 실행: 그날 가장 좋은 콘텐츠 원고 만들기 (뉴스·꿀팁 비율은 정하지 않음)
 
   재료: 해외 AI 매체 기사(뉴스) + AI 회사 공식 블로그 글(꿀팁 재료)
+  + 화·금에는 'AI 사이트 모음' 1개 (tools.py)
   → 한 바구니에서 보내고 싶거나 저장하고 싶은 것 고르기 → 종류에 맞게 원고 (꿀팁은 지어내기 금지)
 
 사용법:
@@ -37,13 +38,29 @@ def polish(card: dict) -> dict:
             print(f"      · {p}")
         time.sleep(4)
         # 수정본에는 원고 칸만 있으니, kind(뉴스/꿀팁) 같은 나머지 정보는 원래 값을 유지한다
-        card = checker.fix_names({**card, **writer.revise_card(card, problems).model_dump()})
+        revised = writer.revise_card(card, problems)
+        if card.get("kind") == "tools":  # 사이트 주소·캡처는 코드가 다시 붙인다
+            import tools
+
+            new = tools.to_card(revised, [_site_with_shot(card, i) for i in range(len(card["sites"]))])
+            card = checker.fix_names({**card, **new})
+        else:
+            card = checker.fix_names({**card, **revised.model_dump()})
     card["warnings"] = checker.find_problems(card)
     if card["warnings"]:
         print(f"   ⚠️ 끝까지 남은 문제 {len(card['warnings'])}개 (검수 때 확인)")
     else:
         print("   ✅ 검사 통과")
     return card
+
+
+def _site_with_shot(card: dict, i: int) -> dict:
+    """원고에 저장된 사이트 정보 + 캡처 경로 (고쳐 쓰기 후 다시 붙이려고)."""
+    shot = next((sl["shot"] for sl in card["slides"] if sl.get("site_index") == i), "")
+    if not shot:  # AI가 이 사이트를 빼먹었으면 캡처 파일 이름으로 찾는다
+        site = card["sites"][i]
+        shot = str(Path("output") / date.today().isoformat() / "shots" / f"{site['domain'].replace('.', '_')}.jpg")
+    return {**card["sites"][i], "shot": shot, "tagline": ""}
 
 
 def gather() -> list[dict]:
@@ -71,9 +88,13 @@ def main() -> None:
 
     import writer
 
-    print(f"🐿️ 보내고 싶거나 저장하고 싶은 콘텐츠 {POSTS_PER_DAY}개 고르는 중...")
+    import tools
+
+    tool_day = tools.is_tool_day()
+    n_pick = POSTS_PER_DAY - 1 if tool_day else POSTS_PER_DAY  # 화·금은 1자리를 'AI 사이트 모음'에
+    print(f"🐿️ 보내고 싶거나 저장하고 싶은 콘텐츠 {n_pick}개 고르는 중...")
     try:
-        picked = writer.pick_contents(items, n=POSTS_PER_DAY)
+        picked = writer.pick_contents(items, n=n_pick)
     except RuntimeError as e:
         print(f"⛔ {e}")
         return
@@ -105,6 +126,19 @@ def main() -> None:
         news.mark_seen([a["link"]])
         print(f"   → {card['hook_title']}")
         time.sleep(4)  # 무료 등급 분당 요청 제한 배려
+
+    if tool_day:
+        print("\n🧰 오늘은 'AI 사이트 모음'도 만들어요")
+        try:
+            card = tools.make_card(date.today().isoformat())
+            if card:
+                card = polish(card)
+                results.append({"original_title": card["hook_title"], **card})
+                out_file.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
+                tools.mark_used(card)
+                print(f"   → {card['hook_title']}")
+        except Exception as e:  # noqa: BLE001 - 사이트 모음이 실패해도 오늘 뉴스·꿀팁은 그대로 보낸다
+            print(f"   ⚠️ AI 사이트 모음 실패: {e}")
 
     print(f"\n✅ 원고 {len(results)}개 저장됨: {out_file}")
 

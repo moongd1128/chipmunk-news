@@ -58,12 +58,22 @@ def build_pages(card: dict, day: str, assets: dict) -> list[str]:
                              subtitle=card["subtitle"], image=assets["cover"], logos=assets["logos"],
                              rivalry=assets.get("rivalry"),
                              focus=assets.get("focus"), **common)]
+    tools = card.get("kind") == "tools"
     for i, s in enumerate(card["slides"], 1):
+        if tools:  # AI 사이트 모음: 사이트 주소 + 화면 캡처 + 큰 글씨 2줄 + 작은 글씨 1줄
+            shot = Path(s.get("shot", ""))
+            pages.append(template.render(kind="site", index=i, heading=s["heading"], body=s["body"],
+                                         domain=s["domain"], total=len(card["slides"]),
+                                         shot=images._data_uri(shot.read_bytes()) if shot.is_file() else None,
+                                         **common))
+            continue
         pages.append(template.render(kind="slide", index=i, heading=s["heading"], body=s["body"],
                                      bad=s.get("bad"), good=s.get("good"),
                                      image=assets["slide"] if i == PHOTO_SLIDE else None, **common))
     pages.append(template.render(kind="end", takeaway=card["takeaway"], action_tip=card.get("action_tip"),
-                                 share_target=card.get("share_target"), **common))
+                                 share_target=card.get("share_target"),
+                                 sites=[(s["site"], s["domain"]) for s in card["slides"]] if tools else None,
+                                 **common))
     return pages
 
 
@@ -98,6 +108,29 @@ class _Shooter:
     def shoot(self, jobs: list[tuple[str, Path]]) -> None:
         self._pool.submit(self._shoot, jobs).result()
 
+    def _shoot_site(self, url: str, path: Path) -> str:
+        self._ensure_page()
+        page = self._browser.new_page(viewport={"width": 1280, "height": 800})
+        try:
+            try:
+                page.goto(url, wait_until="load", timeout=30_000)
+            except Exception:  # noqa: BLE001 - 느린 사이트는 뜬 데까지만
+                pass
+            page.wait_for_timeout(2500)
+            # 쿠키 안내 창은 '동의'를 누르지 않고 화면에서만 숨긴다
+            page.add_style_tag(content="[id*=cookie i],[class*=cookie i],[id*=consent i],[class*=consent i],"
+                                       "[aria-label*=cookie i]{display:none!important}")
+            page.screenshot(path=str(path), type="jpeg", quality=85)
+            return page.inner_text("body")[:3000]
+        except Exception as e:  # noqa: BLE001
+            print(f"   (캡처 실패: {e})")
+            return ""
+        finally:
+            page.close()
+
+    def shoot_site(self, url: str, path: Path) -> str:
+        return self._pool.submit(self._shoot_site, url, path).result()
+
 
 def _cached_route(route) -> None:
     """글꼴·CSS 요청은 디스크에 저장해 두고 다음부터는 인터넷 대신 그걸 쓴다."""
@@ -117,6 +150,11 @@ def _cached_route(route) -> None:
 
 
 _shooter = _Shooter()
+
+
+def shoot_site(url: str, path: Path) -> str:
+    """사이트 첫 화면을 캡처하고, 화면에 보이는 글을 돌려준다 (AI 사이트 모음용). 실패하면 빈 글."""
+    return _shooter.shoot_site(url, path)
 
 
 def render(day: str, only: int | None = None, refresh: bool = False, cover_only: bool = False) -> list[Path]:

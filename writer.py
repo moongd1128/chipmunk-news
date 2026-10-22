@@ -98,6 +98,26 @@ class CardNews(BaseModel):
     image_prompt: str         # 마땅한 이미지가 없을 때 AI로 그릴 그림 설명 (영어)
 
 
+class ToolItem(BaseModel):
+    site: int     # 아래 사이트 목록의 번호
+    name: str     # 사이트 이름 (영어 그대로, 예: "Poe")
+    heading: str  # 이 사이트로 얻는 것 (2줄, 줄바꿈 \n, 핵심 단어 1개 **강조**)
+    note: str     # 솔직한 한 줄 (무료 범위·제한 등, 사이트 글에 근거가 있는 것만)
+
+
+class ToolsCard(BaseModel):
+    title_options: list[str]
+    hook_title: str
+    subtitle: str
+    items: list[ToolItem]  # 정확히 5개, 가장 놀라운 사이트부터
+    takeaway: str
+    share_target: str
+    caption: str
+    hashtags: list[str]
+    image_queries: list[str]
+    image_prompt: str
+
+
 class ImageIdea(BaseModel):
     cover_type: str
     companies: list[str]
@@ -374,11 +394,32 @@ def write_tip_card(article: dict, body: str) -> CardNews:
     return _generate_card(prompt)
 
 
-def revise_card(card: dict, problems: list[str]) -> CardNews:
+def revise_card(card: dict, problems: list[str]) -> CardNews | ToolsCard:
     """검사기가 찾은 문제만 고친 원고를 다시 받는다."""
     import json
 
     issues = "\n".join(f"- {p}" for p in problems)
+    if card.get("kind") == "tools":
+        import tools
+
+        shown = {k: card[k] for k in ToolsCard.model_fields if k in card and k != "items"}
+        shown["items"] = tools.model_items(card)
+        sites = "\n\n".join(f"[{i}] {s['name']} ({s['domain']})\n{s['page_text'][:1500]}"
+                             for i, s in enumerate(card["sites"]))
+        prompt = f"""{PERSONA}
+
+아래 'AI 사이트 모음' 카드 원고에서 검사기가 문제를 찾았어. 문제가 된 부분만 고치고 나머지는 그대로 둬.
+사이트 글에 없는 내용(무료, 가입 없이, 한국어 지원 등)은 쓰지 마.
+
+찾은 문제:
+{issues}
+
+원고:
+{json.dumps(shown, ensure_ascii=False, indent=1)}
+
+사이트 글:
+{sites}"""
+        return _generate(prompt, ToolsCard)
     prompt = f"""{PERSONA}
 
 아래 카드뉴스 원고에서 검사기가 문제를 찾았어. 문제가 된 부분만 고치고 나머지 내용과 흐름은 그대로 둬.
@@ -390,6 +431,77 @@ def revise_card(card: dict, problems: list[str]) -> CardNews:
 원고:
 {json.dumps(card, ensure_ascii=False, indent=1)}"""
     return _generate_card(prompt, think=False)  # 지적받은 곳만 고치는 일이라 빠르게
+
+
+def pick_tools(cands: list[dict], n: int) -> list[int]:
+    """Product Hunt 신상 AI 도구 중 평범한 인스타 사용자가 써볼 만한 것을 고른다."""
+    listing = "\n".join(f"[{i}] {c['name']} — {c['tagline']}" for i, c in enumerate(cands))
+    prompt = f"""{PERSONA}
+
+아래는 최근 나온 AI 도구 목록이야. 인스타를 쓰는 **평범한 한국 20~30대**가 보고
+"이거 불법 아냐? 이런 게 된다고?" 하면서 저장해두고 써보고 싶어질 것 {n}개를 골라줘.
+
+좋은 것: 공부·글쓰기·사진·영상·음악·여행·쇼핑·정리·취미처럼 일상에 바로 쓰는 것, 결과가 눈에 보이는 것, 무료로 써볼 수 있어 보이는 것
+빼야 할 것: 회사·팀용, 개발자용, 영업·마케팅·고객관리, 투자·코인, 설명만 봐선 뭔지 모르겠는 것, 성인용
+고른 번호만, 좋은 순서대로.
+
+{listing}"""
+    picked = [i for i in _generate(prompt, Pick).indexes if 0 <= i < len(cands)]
+    return list(dict.fromkeys(picked))[:n]
+
+
+def write_tools_card(sites: list[dict]) -> ToolsCard:
+    """확인한 사이트 5개로 'AI 사이트 모음' 카드 원고를 쓴다. 사이트 글이 유일한 근거."""
+    listing = "\n\n".join(f"[{i}] {s['name']} ({s['domain']}) — {s['tagline']}\n사이트 글:\n{s['page_text'][:1500]}"
+                           for i, s in enumerate(sites))
+    prompt = f"""{PERSONA}
+
+아래 AI 사이트 5개로 **'AI 사이트 모음'** 카드뉴스 원고를 만들어줘.
+목표: 보는 사람이 끝까지 넘겨보고 "저장해두고 하나씩 써봐야지" 하게 만드는 것.
+
+카드 모양: 표지 → 사이트 1장에 하나씩 5장(위에 사이트 주소, 가운데 사이트 화면 캡처, 아래 큰 글씨 2줄 + 작은 글씨 1줄) → 정리
+
+내용 규칙 (가장 중요):
+- 각 사이트 설명의 근거는 아래 '사이트 글'뿐이야. 사이트 글에 없는 기능·가격·조건은 절대 쓰지 마
+- "무료", "가입 없이", "로그인 없이", "한국어 지원", "광고 없음" 같은 말은 사이트 글에 그렇게 적혀 있을 때만
+- 무료라도 제한(횟수·용량 등)이 사이트 글에 있으면 note에 솔직하게 적어
+
+규칙:
+- title_options: 표지 제목 후보 정확히 3개, 각각 20자 이내. 숫자 5개를 약속하는 목록형으로, 스타일은 서로 다르게
+  (예: "이거 불법 아냐? 싶은 AI 사이트 5개", "몰래 쓰고 싶은 무료 AI 5개", "아는 사람만 쓰는 AI 사이트 5개")
+  "불법 아냐?", "99%가 모르는" 같은 홍보 표현은 표지 제목·부제에서만 OK. 본문·캡션에선 사실처럼 쓰지 마
+{TITLE_WORDING}
+- hook_title: title_options 중 가장 강한 것 하나를 그대로
+- subtitle: 25자 이내 (예: "전부 무료로 시작할 수 있는 사이트")
+- items: 정확히 5개. **가장 놀라운 사이트를 첫 번째로** (첫 사이트 장이 두 번째 표지 역할을 해)
+  - site: 위 목록 번호 그대로, name: 사이트 이름 (영어 그대로, 짧게)
+  - heading: 이 사이트로 **얻는 것**을 2줄로 (줄바꿈 \\n, 한 줄 12자 안팎, 전체 22자 이내). 기능 이름 말고 결과로
+    핵심 단어 1개만 **별표 두 개**로 감싸 (카드에서 주황색으로 강조돼)
+    말하듯이 끝내. "~ 지원", "~ 제공"처럼 명사로 끊지 마
+    (예: "쓸 만한 **도구**가\\n한곳에 모였다", "유명 **AI 모델**을\\n한곳에서 써보기", "올린 자료가\\n**퀴즈**로 바뀐다")
+  - note: 솔직한 한 줄 (30자 이내). 무료 범위·제한·필요한 것 (예: "무료 플랜은 하루 사용량 제한이 있어요", "로그인·가입 없이 바로 써요")
+- takeaway: 마지막 장 한줄 정리 (30자 이내, 예: "저장해두고 필요할 때 하나씩 꺼내 쓰세요")
+- share_target: 이걸 보내주고 싶은 사람 (12자 이내, 예: "과제하는 친구")
+- caption: 인스타 본문. 아래 형식 그대로, 문단 사이는 빈 줄:
+  첫 줄: 저장하고 싶게 만드는 한 문장 + 이모지 하나
+  (빈 줄)
+  1️⃣ 이름 (주소) 이모지
+  무엇을 해주는지 1~2문장 (사이트 글에 있는 것만, 제한이 있으면 적기)
+  (5개 모두 이 형식, 사이트 사이는 빈 줄)
+  (빈 줄)
+  📌 저장해두고 필요할 때 꺼내 쓰세요
+  📩 (share_target)에게 보내주세요
+  (빈 줄)
+  🔗 사이트 링크는 프로필 링크에 모아뒀어요
+  {FOLLOW_LINE}
+- hashtags: 한국어 위주 8~10개, '#' 포함 (#AI사이트 #AI추천 #무료AI 포함, 단 '무료'는 정말 무료로 시작할 수 있을 때만)
+- image_queries: 표지 배경 사진 검색어 3개 (영어 1~3단어). 스크롤을 멈추게 하는 강한 장면
+  (예: "hacker hood dark", "secret door light", "laptop night neon"). 사람 얼굴이 크게 나오는 건 피하기
+- image_prompt: 마땅한 사진이 없을 때 AI로 그릴 그림 설명 (영어 한 문장, 글자·로고·실존 인물 없이)
+
+사이트 목록:
+{listing}"""
+    return _generate(prompt, ToolsCard, think=True)
 
 
 def _generate_card(prompt: str, think: bool = True) -> CardNews:
