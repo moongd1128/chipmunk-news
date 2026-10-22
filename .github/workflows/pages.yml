@@ -1,4 +1,6 @@
-# 프로필 링크 페이지(원문 모음)를 GitHub Pages에 올린다 → https://moongd1128.github.io/chipmunk-news/
+# 프로필 링크 페이지(원문 모음)를 GitHub Pages에 올린다
+#   새 주소: https://chipmunk-news.github.io/  (단체 chipmunk-news의 저장소에 올림, PAGES_TOKEN 필요)
+#   예전 주소: https://moongd1128.github.io/chipmunk-news/  (인스타 링크를 바꾸기 전까지 같이 유지)
 #
 # 누가 깨우나요?
 #   - 버튼 처리(buttons.yml)에서 [발행]이 성공하면 바로
@@ -40,6 +42,19 @@ jobs:
         run: |
           python state.py pull
           python linkpage.py build
+      # 새 주소: 단체 저장소에 통째로 덮어써서 올림 (기록은 필요 없어서 매번 새로)
+      - name: 새 주소(chipmunk-news.github.io)에 올리기
+        env:
+          PAGES_TOKEN: ${{ secrets.PAGES_TOKEN }}
+        run: |
+          if [ -z "$PAGES_TOKEN" ]; then echo "PAGES_TOKEN이 아직 없어서 건너뜀"; exit 0; fi
+          cd site
+          touch .nojekyll
+          git init -q -b main
+          git add -A
+          git -c user.name="chipmunk-bot" -c user.email="actions@users.noreply.github.com" commit -q -m "원문 모음 갱신"
+          git push -q -f "https://x-access-token:${PAGES_TOKEN}@github.com/chipmunk-news/chipmunk-news.github.io.git" main
+          echo "새 주소에 올림"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
