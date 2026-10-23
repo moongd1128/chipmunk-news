@@ -9,11 +9,11 @@ import feedparser
 
 import news
 
-# 독자(AI로 일 잘하고 싶은 직장인·크리에이터·1인 사업자)에게 쓸모없는 주제: 개발자용, 대기업 관리자용, 기업 제휴·도입 사례, 정책·연구 등
+# 독자(AI를 더 잘 쓰고 싶은 사람: 직장인·크리에이터·1인 사업자·대학생 등)에게 쓸모없는 주제: 개발자용, 대기업 관리자용, 학교 행정, 기업 제휴·도입 사례, 정책·연구 등
 # 제목에 이런 말이 있으면 꿀팁 재료에서 미리 뺀다 (AI가 가끔 지시를 무시해서 코드로 확실하게)
 NOT_FOR_EVERYONE = re.compile(
     r"BigQuery|Vertex|Looker|Cloud|API|SDK|developer|Codex|enterprise|admin|"
-    r"Classroom|teacher|educator|school|student|teen|partner|brings .+ (into|to) ChatGPT|customer|"
+    r"Classroom|teacher|educator|school|partner|brings .+ (into|to) ChatGPT|customer|"
     r"case study|hotel|bank|government|sovereign|security|compliance|policy|research|safety|"
     r"invest|funding|hiring|economic|nonprofit|healthcare|"
     # 관리자 설정·보안·주간 요약·기업 사례 ("A사가 OO를 76배 줄였다" 같은 글)

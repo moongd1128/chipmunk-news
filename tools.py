@@ -31,11 +31,11 @@ SITES_PER_CARD = 5
 MAX_AGE_DAYS = 10
 SOURCE_NAME = "AI 사이트 모음"
 
-# 독자에게 쓸모없는 것: 꿀팁 재료 거름망 + 개발·고객센터·채용·투자 도구
-# (영업·마케팅·광고·1인 창업 도구는 독자가 '일 잘하는 사람'이라 이제 대상)
+# 독자에게 쓸모없는 것: 꿀팁 재료 거름망 + 개발자 전용·고객센터·채용·투자 도구
+# (영업·마케팅·광고·1인 창업 도구, 비개발자도 말로 쓰는 코딩 도구는 대상)
 NOT_FOR_EVERYONE = re.compile(
     tips.NOT_FOR_EVERYONE.pattern + r"|customer support|support team|recruit|devops|deploy|code review|"
-    r"\bcode\b|coding|engineer|compliance|investor|crypto|trading",
+    r"engineer|compliance|investor|crypto|trading",
     re.IGNORECASE,
 )
 # 봇 차단·오류 화면이면 캡처해도 쓸 수 없다
