@@ -132,6 +132,24 @@ def _tool_problems(n: int, s: dict, card: dict) -> list[str]:
     return out
 
 
+def _caption_problems(card: dict) -> list[str]:
+    """모범 사례(every._ai) 설득 순서 중 빠지기 쉬운 것: 탓 돌리기·상황별 저장·대상별 공유·첫 줄 길이."""
+    out = []
+    caption = card.get("caption", "")
+    first = EMOJI.sub("", caption.strip().split("\n")[0]).strip()
+    if len(first) > 45:
+        out.append(f"캡션 첫 줄이 너무 길어요({len(first)}자): 아픈 곳+약속을 40자 이내로")
+    if "'저장'" not in caption or "'공유'" not in caption:
+        out.append("캡션 끝에 ✔️ '좋아요' / ✔️ (언제) 꺼내 보게 '저장' / ✔️ (누구)에게 '공유' 줄이 빠졌어요")
+    if not card.get("save_when") or len(card.get("save_when", "")) > 14:
+        out.append("save_when(저장해 두고 꺼내 볼 상황)을 12자 이내로 (예: '보고서 쓸 때')")
+    if card.get("kind") in ("tip", "tools") and "아니라" not in caption:
+        out.append("캡션에 '~해서가 아니라 ~가 없어서예요' 한 문장이 빠졌어요 (독자 탓이 아니라고 짚고 해결책으로)")
+    if card.get("kind") in ("tip", "tools") and "1️⃣" not in caption:
+        out.append("캡션에 1️⃣ 2️⃣ 3️⃣ 번호 목록이 빠졌어요")
+    return out
+
+
 def find_problems(card: dict) -> list[str]:
     """규칙을 어긴 곳을 찾아서 사람이 읽을 수 있는 문장으로 돌려준다."""
     problems = []
@@ -202,6 +220,8 @@ def find_problems(card: dict) -> list[str]:
             problems.append(f"{n}번 슬라이드에 숫자가 {len(numbers)}개({', '.join(numbers)}): 가장 중요한 1개만 남기기")
         if len(EMOJI.findall(text)) > 1:
             problems.append(f"{n}번 슬라이드에 이모지가 2개 이상: 1개까지만")
+
+    problems += _caption_problems(card)
 
     visible = " ".join(
         [card["hook_title"], card["subtitle"], card["takeaway"], card["caption"], card.get("action_tip", "")]

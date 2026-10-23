@@ -31,11 +31,11 @@ SITES_PER_CARD = 5
 MAX_AGE_DAYS = 10
 SOURCE_NAME = "AI 사이트 모음"
 
-# 일반인용이 아닌 것: 꿀팁 재료 거름망 + 회사 영업·고객관리·광고·개발 도구
+# 독자에게 쓸모없는 것: 꿀팁 재료 거름망 + 개발·고객센터·채용·투자 도구
+# (영업·마케팅·광고·1인 창업 도구는 독자가 '일 잘하는 사람'이라 이제 대상)
 NOT_FOR_EVERYONE = re.compile(
-    tips.NOT_FOR_EVERYONE.pattern + r"|B2B|sales|CRM|customer support|support team|recruit|ads\b|advertis|"
-    r"marketing team|agency|devops|deploy|code review|\bcode\b|coding|engineer|workflow automation|"
-    r"compliance|lead gen|outbound|GTM|SaaS|teams?\b|startup|founder|investor|crypto|trading",
+    tips.NOT_FOR_EVERYONE.pattern + r"|customer support|support team|recruit|devops|deploy|code review|"
+    r"\bcode\b|coding|engineer|compliance|investor|crypto|trading",
     re.IGNORECASE,
 )
 # 봇 차단·오류 화면이면 캡처해도 쓸 수 없다
@@ -167,13 +167,14 @@ def make_card(day: str) -> dict | None:
     if len(cands) < SITES_PER_CARD:
         print("   ⚠️ 후보가 모자라서 이번엔 건너뛰어요")
         return None
-    picked = [cands[i] for i in writer.pick_tools(cands, n=SITES_PER_CARD + 4)]
-    print(f"   🧰 AI가 고른 후보 {len(picked)}개 → 사이트 열어보는 중")
+    theme, idx = writer.pick_tools(cands, n=SITES_PER_CARD + 4)
+    picked = [cands[i] for i in idx]
+    print(f"   🧰 오늘의 일 상황: {theme} → 후보 {len(picked)}개 사이트 열어보는 중")
     sites = check_sites(picked, Path("output") / day / "shots")[:SITES_PER_CARD]
     if len(sites) < SITES_PER_CARD:
         print(f"   ⚠️ 쓸 수 있는 사이트가 {len(sites)}개뿐이라 이번엔 건너뛰어요")
         return None
-    card = checker.fix_names(to_card(writer.write_tools_card(sites), sites))
+    card = checker.fix_names({**to_card(writer.write_tools_card(sites, theme), sites), "theme": theme})
     return card
 
 
