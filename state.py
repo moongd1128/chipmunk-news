@@ -10,7 +10,7 @@
 사용법:
   python state.py pull       # Supabase → 이 컴퓨터
   python state.py push       # 이 컴퓨터 → Supabase
-  python state.py push-bgm   # assets/bgm 음악 올리기 (처음 한 번)
+  python state.py push-bgm   # assets/bgm 음악을 비공개 저장소와 맞추기 (곡을 넣거나 뺀 뒤에)
   python state.py pull-bgm   # 음악 내려받기 (Actions에서 사용)
 """
 import io
@@ -111,22 +111,36 @@ def pull() -> None:
     print(f"☁️ 상태 내려받음 ({len(data) // 1024}KB)")
 
 
+def _bgm_in_bucket() -> list[str]:
+    r = requests.post(f"{_base()}/storage/v1/object/list/{BUCKET}", headers=_headers("application/json"),
+                      json={"prefix": "bgm", "limit": 1000}, timeout=30)
+    r.raise_for_status()
+    return [item["name"] for item in r.json() if item["name"].endswith(".mp3")]
+
+
 def push_bgm() -> None:
+    """assets/bgm을 비공개 버킷과 똑같이 맞춘다: 새 곡은 올리고, PC에서 지운 곡은 버킷에서도 지운다."""
     files = sorted(Path("assets/bgm").glob("*.mp3"))
+    have = set(_bgm_in_bucket())
     for f in files:
-        _put(f"bgm/{f.name}", f.read_bytes(), "audio/mpeg")
-        print(f"🎵 올림: {f.name}")
+        if f.name not in have:
+            _put(f"bgm/{f.name}", f.read_bytes(), "audio/mpeg")
+            print(f"🎵 올림: {f.name}")
+    gone = sorted(have - {f.name for f in files})
+    if gone:
+        r = requests.delete(f"{_base()}/storage/v1/object/{BUCKET}", headers=_headers("application/json"),
+                            json={"prefixes": [f"bgm/{n}" for n in gone]}, timeout=30)
+        r.raise_for_status()
+        for n in gone:
+            print(f"🗑️ 뺌: {n}")
+    print(f"🎵 비공개 저장소 음악 {len(files)}곡")
 
 
 def pull_bgm() -> None:
-    r = requests.post(f"{_base()}/storage/v1/object/list/{BUCKET}", headers=_headers("application/json"),
-                      json={"prefix": "bgm", "limit": 100}, timeout=30)
-    r.raise_for_status()
     out = Path("assets/bgm")
     out.mkdir(parents=True, exist_ok=True)
-    for item in r.json():
-        name = item["name"]
-        if name.endswith(".mp3") and not (out / name).exists():
+    for name in _bgm_in_bucket():
+        if not (out / name).exists():
             (out / name).write_bytes(_get(f"bgm/{name}"))
     print(f"🎵 음악 {len(list(out.glob('*.mp3')))}곡 준비")
 
