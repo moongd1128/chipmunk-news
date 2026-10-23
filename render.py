@@ -119,9 +119,7 @@ class _Shooter:
             except Exception:  # noqa: BLE001 - 느린 사이트는 뜬 데까지만
                 pass
             page.wait_for_timeout(2500)
-            # 쿠키 안내 창은 '동의'를 누르지 않고 화면에서만 숨긴다
-            page.add_style_tag(content="[id*=cookie i],[class*=cookie i],[id*=consent i],[class*=consent i],"
-                                       "[aria-label*=cookie i]{display:none!important}")
+            page.add_style_tag(content=_HIDE_COOKIES)  # 쿠키 안내는 '동의' 없이 화면에서만 숨김
             page.screenshot(path=str(path), type="jpeg", quality=85)
             return page.inner_text("body")[:3000]
         except Exception as e:  # noqa: BLE001
@@ -133,10 +131,48 @@ class _Shooter:
     def shoot_site(self, url: str, path: Path) -> str:
         return self._pool.submit(self._shoot_site, url, path).result()
 
+    def _scan_site(self, url: str, out_dir: Path, width: int, height: int, max_tiles: int = 6) -> list[tuple[float, Path]]:
+        """사이트를 마우스 휠로 내려가며 구간마다 찍는다. [(휠로 내린 거리, 사진)] — 녹화 때 같은 거리만큼 내리면 같은 장면."""
+        import hashlib as _h
+
+        self._ensure_page()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        page = self._browser.new_page(viewport={"width": width, "height": height})
+        tiles, last, y = [], None, 0.0
+        try:
+            try:
+                page.goto(url, wait_until="load", timeout=30_000)
+            except Exception:  # noqa: BLE001
+                pass
+            page.wait_for_timeout(1500)
+            page.add_style_tag(content=_HIDE_COOKIES)
+            page.mouse.move(width / 2, height / 2)
+            for j in range(max_tiles):
+                path = out_dir / f"tile_{j}.jpg"
+                page.screenshot(path=str(path), type="jpeg", quality=60, scale="css")
+                digest = _h.sha1(path.read_bytes()).hexdigest()
+                if digest == last:  # 더 안 내려가면(페이지 끝) 그만
+                    path.unlink()
+                    break
+                last = digest
+                tiles.append((y, path))
+                step = height * 0.85
+                for _ in range(10):
+                    page.mouse.wheel(0, step / 10)
+                    page.wait_for_timeout(40)
+                y += step
+                page.wait_for_timeout(700)  # 부드러운 스크롤·나타나는 효과가 끝날 때까지
+        finally:
+            page.close()
+        return tiles
+
+    def scan_site(self, url: str, out_dir: Path, width: int, height: int) -> list[tuple[float, Path]]:
+        return self._pool.submit(self._scan_site, url, out_dir, width, height).result()
+
     def _record_site(self, url: str, out_dir: Path, width: int, height: int, seconds: float,
-                     focus: str = "") -> tuple[Path, float]:
-        """사이트를 열고, 보여줄 곳(focus 문구)까지 천천히 스크롤해서 멈추는 모습을 녹화한다.
-        (영상 파일, 스크롤 시작 시각)"""
+                     target_y: float = 0.0) -> tuple[Path, float]:
+        """사이트를 열고, 고른 장면(target_y: 구간 찍을 때 휠로 내린 거리)까지 천천히 내려가서 멈추는 모습을 녹화한다.
+        (영상 파일, 스크롤 시작부터 녹화 끝까지 걸린 초)"""
         import time
 
         self._ensure_page()
@@ -151,34 +187,23 @@ class _Shooter:
             except Exception:  # noqa: BLE001 - 느린 사이트는 뜬 데까지만
                 pass
             page.wait_for_timeout(1500)
-            page.add_style_tag(content="[id*=cookie i],[class*=cookie i],[id*=consent i],[class*=consent i],"
-                                       "[aria-label*=cookie i]{display:none!important}")
-            page.wait_for_timeout(200)
-            found = bool(focus) and page.evaluate(_FIND_FOCUS, focus)
+            page.add_style_tag(content=_HIDE_COOKIES)
             page.mouse.move(width / 2, height / 2)
-            if found:  # 많이 내려가야 하면, 녹화에 쓰는 구간 전에 미리 근처까지 가 둔다 (빨리 휙 내리는 장면이 안 나오게)
-                for _ in range(40):
-                    far = page.evaluate("window.__focusEl.getBoundingClientRect().top") - height * 0.75
-                    if far < 10:
-                        break
-                    page.mouse.wheel(0, min(far, 600))
-                    page.wait_for_timeout(60)
-                page.wait_for_timeout(700)  # 부드러운 스크롤 효과가 멈출 때까지
-            offset = time.time() - started
-            # 사람처럼 마우스 휠로 내린다 (자체 스크롤을 쓰는 사이트는 프로그램 스크롤이 안 먹어서)
-            # 보여줄 곳이 화면 위쪽 1/4에 올 때까지 천천히 다가가고(멀수록 조금 빠르게), 도착하면 멈춰서 보여준다.
-            # 못 찾으면 첫 화면을 살짝만 내린다 (의미 없이 빨리 내리지 않게)
-            moved, deadline = 0.0, time.time() + seconds * 0.6
-            while time.time() < deadline:
-                if found:
-                    left = page.evaluate("window.__focusEl.getBoundingClientRect().top") - height * 0.22
-                else:
-                    left = height * 0.25 - moved
-                if left < 6:
-                    break
-                step = min(left * 0.09 + 3, 38)
+            # 화면에 나오는 건 마지막 '천천히 다가가는' 부분만. 그 전까지는 녹화에 안 쓰는 구간에서 미리 내려 둔다
+            approach = height * 0.3 if target_y > 0 else height * 0.12
+            before = max(0.0, target_y - approach)
+            done = 0.0
+            while done < before:  # 구간 찍을 때와 같은 방식(작게 나눠서)으로 내려야 같은 장면에 도착
+                step = min(height * 0.085, before - done)
                 page.mouse.wheel(0, step)
-                moved += step
+                done += step
+                page.wait_for_timeout(40)
+            page.wait_for_timeout(700)  # 부드러운 스크롤·나타나는 효과가 멈출 때까지
+            offset = time.time() - started
+            # 마우스 휠로 처음엔 조금 빠르게, 점점 천천히 다가가서 멈춘다 (나머지 시간은 멈춘 화면을 보여줌)
+            frames = int(seconds * 30 * 0.55)
+            for k in range(frames):
+                page.mouse.wheel(0, approach * 2 * (1 - k / frames) / frames)
                 page.wait_for_timeout(1000 / 30)
             page.wait_for_timeout(max(0.0, offset + seconds + 0.3 - (time.time() - started)) * 1000)
         finally:
@@ -190,8 +215,8 @@ class _Shooter:
         return Path(video.path()), tail
 
     def record_site(self, url: str, out_dir: Path, width: int, height: int, seconds: float,
-                    focus: str = "") -> tuple[Path, float]:
-        return self._pool.submit(self._record_site, url, out_dir, width, height, seconds, focus).result()
+                    target_y: float = 0.0) -> tuple[Path, float]:
+        return self._pool.submit(self._record_site, url, out_dir, width, height, seconds, target_y).result()
 
     def _shoot_png(self, html: str, path: Path, width: int, height: int) -> None:
         """투명 배경 PNG로 찍는다 (릴스 위에 얹을 글씨 판)."""
@@ -234,30 +259,21 @@ def shoot_site(url: str, path: Path) -> str:
     return _shooter.shoot_site(url, path)
 
 
+def scan_site(url: str, out_dir: Path, width: int, height: int) -> list[tuple[float, Path]]:
+    """사이트를 위→아래로 구간마다 찍는다 (AI가 가장 직관적인 장면을 고르게). [(내린 거리, 사진)]"""
+    return _shooter.scan_site(url, out_dir, width, height)
+
+
 def record_site(url: str, out_dir: Path, width: int, height: int, seconds: float,
-                focus: str = "") -> tuple[Path, float]:
-    """보여줄 곳(focus)까지 스크롤하는 모습을 녹화한다 (움직이는 릴스용).
+                target_y: float = 0.0) -> tuple[Path, float]:
+    """고른 장면(target_y)까지 천천히 내려가 멈추는 모습을 녹화한다 (움직이는 릴스용).
     (영상 파일, 스크롤 시작부터 녹화 끝까지 걸린 초)"""
-    return _shooter.record_site(url, out_dir, width, height, seconds, focus)
+    return _shooter.record_site(url, out_dir, width, height, seconds, target_y)
 
 
-# 사이트에서 focus 문구가 들어 있는 글자를 찾는다 (못 찾으면 앞 단어 몇 개로 다시)
-_FIND_FOCUS = """(phrase) => {
-  const words = phrase.toLowerCase().replace(/\\s+/g, ' ').trim().split(' ');
-  for (const n of [words.length, 4, 3, 2]) {
-    if (n > words.length) continue;
-    const p = words.slice(0, n).join(' ');
-    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    let t;
-    while ((t = w.nextNode())) {
-      const el = t.parentElement;
-      if (!el || !t.textContent.toLowerCase().replace(/\\s+/g, ' ').includes(p)) continue;
-      const r = el.getBoundingClientRect();
-      if (r.width > 0 && r.height > 0 && r.top > 80) { window.__focusEl = el; return true; }
-    }
-  }
-  return false;
-}"""
+# 쿠키 안내 창은 '동의'를 누르지 않고 화면에서만 숨긴다
+_HIDE_COOKIES = ("[id*=cookie i],[class*=cookie i],[id*=consent i],[class*=consent i],"
+                 "[aria-label*=cookie i]{display:none!important}")
 
 
 def shoot_png(html: str, path: Path, width: int, height: int) -> None:

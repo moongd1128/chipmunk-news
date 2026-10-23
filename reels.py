@@ -150,32 +150,38 @@ def make_tools_reel(card: dict, card_dir: Path, out: Path | None = None, bgm: Pa
     slides = card["slides"]
     total = len(slides)
 
-    # 1) 사이트마다 보여줄 곳(focus)까지 스크롤 녹화 (한 번 녹화한 건 재사용)
-    if any(not s.get("focus") for s in slides):  # 예전 원고엔 없어서 AI에게 사이트 글에서 고르게 한다
+    # 1) 사이트마다 가장 직관적인 장면 고르기: 위→아래로 구간마다 찍고, AI가 직접 보고 고름
+    #    (맨 위는 분위기 그림·영어 문장뿐이고 실제 실행 화면은 아래쪽에 있는 사이트가 많아서)
+    if any("scene_y" not in s for s in slides):
         import writer
 
-        for s, f in zip(slides, writer.pick_focus(card)):
-            s["focus"] = s.get("focus") or f
+        print("   🔎 사이트마다 보여줄 장면 찾는 중...")
+        scans = [render.scan_site(s["url"], work / f"scan_{i}", 1080, VIDEO_H) for i, s in enumerate(slides, 1)]
+        picks = writer.pick_scenes(slides, [[p for _, p in sc] for sc in scans])
+        for s, sc, j in zip(slides, scans, picks):
+            s["scene_y"] = sc[j][0] if sc else 0.0
+
+    # 2) 그 장면까지 천천히 내려가 멈추는 모습 녹화 (한 번 녹화한 건 재사용)
     clips = []
     for i, s in enumerate(slides, 1):
         meta = work / f"site_{i}.json"
         if meta.exists() and Path(json.loads(meta.read_text())["video"]).exists():
             info = json.loads(meta.read_text())
         else:
-            print(f"   🎥 {s['domain']} 화면 녹화 중... (보여줄 곳: {s.get('focus') or '없음'})")
-            video, tail = render.record_site(s["url"], work / f"rec_{i}", 1080, VIDEO_H, SITE_SEC, s.get("focus", ""))
+            print(f"   🎥 {s['domain']} 화면 녹화 중...")
+            video, tail = render.record_site(s["url"], work / f"rec_{i}", 1080, VIDEO_H, SITE_SEC, s["scene_y"])
             # 스크롤이 시작된 곳 = 영상 길이 - (스크롤 시작~끝)
             info = {"video": str(video), "offset": max(0.0, _duration(video) - tail)}
             meta.write_text(json.dumps(info))
         clips.append(info)
 
-    # 2) 글씨 판 (위: 번호·주소·큰 글씨, 아래: 작은 글씨·계정) + 첫 화면 훅
+    # 3) 글씨 판 (위: 번호·주소·큰 글씨, 아래: 작은 글씨·계정) + 첫 화면 훅
     for i, s in enumerate(slides, 1):
         render.shoot_png(_panel_html(i, total, s["domain"], s["heading"], s["body"]), work / f"panel_{i}.png", 1080, 1920)
     title = checker_plain(card["hook_title"])
     render.shoot_png(_hook_html(title, "🔖 저장해두세요"), work / "hook.png", 1080, 1920)
 
-    # 3) 장면마다 mp4로 만든 뒤 이어 붙인다
+    # 4) 장면마다 mp4로 만든 뒤 이어 붙인다
     def seg(path: Path, clip: dict, panel: Path, sec: float, start: float = 0.0, blur: bool = False) -> None:
         vid = (f"[0:v]trim=start={clip['offset'] + start:.2f}:duration={sec:.2f},setpts=PTS-STARTPTS,"
                f"scale=1080:{VIDEO_H},fps=30")
@@ -199,7 +205,7 @@ def make_tools_reel(card: dict, card_dir: Path, out: Path | None = None, bgm: Pa
     listing.write_text("".join(f"file '{p.resolve().as_posix()}'\n" for p in parts), encoding="utf-8")
     length = HOOK_SEC + SITE_SEC * len(clips)
 
-    # 4) 배경음악 (기존 릴스와 같은 방식)
+    # 5) 배경음악 (기존 릴스와 같은 방식)
     bgms = sorted(BGM_DIR.glob("*.mp3")) if BGM_DIR.exists() else []
     args = [FFMPEG, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(listing)]
     if bgms:

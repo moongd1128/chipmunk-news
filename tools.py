@@ -141,7 +141,6 @@ def to_card(model, sites: list[dict]) -> dict:
         s = sites[k]
         slides.append({"heading": it["heading"], "body": it["note"], "bad": "", "good": "",
                        "site_index": k, "site": it["name"] or s["name"], "domain": s["domain"],
-                       "focus": it.get("focus", ""),
                        "url": s["url"], "shot": s["shot"]})
     stamp = date.today().strftime("%Y.%m")
     caption = data["caption"]
@@ -155,8 +154,7 @@ def to_card(model, sites: list[dict]) -> dict:
 
 def model_items(card: dict) -> list[dict]:
     """고쳐 쓰기(revise)할 때 AI에게 보여줄 원래 모양(items)."""
-    return [{"site": s["site_index"], "name": s["site"], "heading": s["heading"], "note": s["body"],
-             "focus": s.get("focus", "")}
+    return [{"site": s["site_index"], "name": s["site"], "heading": s["heading"], "note": s["body"]}
             for s in card["slides"]]
 
 
@@ -171,7 +169,7 @@ def make_card(day: str) -> dict | None:
         return None
     picked = [cands[i] for i in writer.pick_tools(cands, n=SITES_PER_CARD + 4)]
     print(f"   🧰 AI가 고른 후보 {len(picked)}개 → 사이트 열어보는 중")
-    sites = check_sites(picked, Path("output") / day / "shots")
+    sites = check_sites(picked, Path("output") / day / "shots")[:SITES_PER_CARD]
     if len(sites) < SITES_PER_CARD:
         print(f"   ⚠️ 쓸 수 있는 사이트가 {len(sites)}개뿐이라 이번엔 건너뛰어요")
         return None
