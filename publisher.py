@@ -182,10 +182,12 @@ def _prepare_reel(day: str, n: int) -> str:
         state.pull_bgm()  # GitHub Actions 버튼 처리에는 음악이 없어서 이때 받아온다
     print("🎬 릴스 영상 만드는 중...")
     video = None
-    if cards[n - 1].get("kind") == "tools":  # AI 사이트 모음: 사이트 실행 화면이 움직이는 릴스
+    # 움직이는 릴스: 사이트 모음은 사이트 실행 화면, 꿀팁은 ❌→⭕ 타이핑 장면 (뉴스는 아직 카드 넘기기)
+    motion = {"tools": reels.make_tools_reel, "tip": reels.make_tip_reel}.get(cards[n - 1].get("kind"))
+    if motion:
         try:
-            video = reels.make_tools_reel(cards[n - 1], card_dir)
-        except Exception as e:  # noqa: BLE001 - 녹화가 안 되면 예전 방식(카드 넘기기)으로라도 올린다
+            video = motion(cards[n - 1], card_dir)
+        except Exception as e:  # noqa: BLE001 - 안 되면 예전 방식(카드 넘기기)으로라도 올린다
             print(f"⚠️ 움직이는 릴스 실패 → 카드 릴스로 대신: {e}")
     video = video or reels.make_reel(card_dir)
 
