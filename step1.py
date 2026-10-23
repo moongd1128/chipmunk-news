@@ -22,7 +22,9 @@ import news
 load_dotenv()
 
 MAX_REVISIONS = 2  # 무료 등급은 하루 요청 수가 적어서 자동 수정은 2번까지 (문제가 남았을 때만 2번째)
-POSTS_PER_DAY = 5  # 하루에 만들 원고 수 (뉴스·꿀팁 섞어서)
+# 하루 원고 수의 상한. 보통은 3~5개면 충분하지만, 좋은 주제가 쏟아지는 날엔 버리지 않고 여기까지 만든다
+# (후보는 7일 보관돼서 나눠 올리면 되니까. 좋은 게 없는 날은 적게, 0개도 OK)
+MAX_POSTS_PER_DAY = 10
 
 
 def polish(card: dict) -> dict:
@@ -93,8 +95,8 @@ def main() -> None:
     import tools
 
     tool_day = tools.is_tool_day()
-    n_pick = POSTS_PER_DAY - 1 if tool_day else POSTS_PER_DAY  # 화·금은 1자리를 'AI 사이트 모음'에
-    print(f"🐿️ 보내고 싶거나 저장하고 싶은 콘텐츠 {n_pick}개 고르는 중...")
+    n_pick = MAX_POSTS_PER_DAY - 1 if tool_day else MAX_POSTS_PER_DAY  # 화·금은 1자리를 'AI 사이트 모음'에
+    print(f"🐿️ 보내고 싶거나 저장하고 싶은 콘텐츠 고르는 중... (좋은 게 많으면 최대 {n_pick}개)")
     try:
         picked = writer.pick_contents(items, n=n_pick)
     except RuntimeError as e:
