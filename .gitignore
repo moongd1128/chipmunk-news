@@ -22,3 +22,6 @@ CLAUDE.md
 # 프로필 링크 페이지 (GitHub Actions가 매번 새로 만듦)
 site/
 .links_changed
+
+# 외부에서 받은 클로드 스킬 (앤트로픽 공식, 각자 라이선스) — 이 PC에서만 사용
+.claude/skills/
