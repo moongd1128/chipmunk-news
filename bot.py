@@ -157,8 +157,12 @@ async def send_cards(bot: Bot, chat_id: str, day: str, only_pending: bool = Fals
         await bot.send_message(chat_id, "오늘 만든 카드가 없어요. /run 으로 만들어 주세요.")
         return
     for n, card in enumerate(cards, 1):
+        if only_pending and card.get("status", "pending") != "pending":
+            continue
         path = cover_path(day, n)
-        if not path.exists() or (only_pending and card.get("status", "pending") != "pending"):
+        if not path.exists():  # 카드 이미지는 공유(state)하지 않아서 GitHub에선 표지를 다시 찍는다
+            await asyncio.to_thread(render.render, day, n, False, True)
+        if not path.exists():
             continue
         with open(path, "rb") as f:
             await bot.send_photo(chat_id, f, caption=caption(card, n, len(cards)),

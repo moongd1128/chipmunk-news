@@ -88,6 +88,28 @@ def prepare(card: dict) -> None:
     print(f"   🧭 표지: {'사진' + logo_txt if mode == 'photo' else '로고' + logo_txt if mode == 'logo' else '글자'}")
 
 
+def _is_photo(data: bytes) -> bool:
+    """진짜 사진 파일인지 (만료된 주소는 사진 대신 'This URL is expired' 같은 글자가 온다)."""
+    return len(data) > 2000 and (data[:3] == b"\xff\xd8\xff" or data[:4] == b"\x89PNG")
+
+
+def _cached_photo(path: Path, url: str) -> bytes | None:
+    """받아 둔 사진이 있으면 그걸, 없으면 받아서 저장. 사진이 아니면(만료 등) None."""
+    if path.exists():
+        data = path.read_bytes()
+        if _is_photo(data):
+            return data
+        path.unlink()  # 예전에 잘못 저장된 것(만료 글자)은 지운다
+    try:
+        data = requests.get(url, timeout=30).content
+    except requests.RequestException:
+        return None
+    if not _is_photo(data):
+        return None
+    path.write_bytes(data)
+    return data
+
+
 def _data_uri(data: bytes) -> str:
     mime = "image/png" if data[:4] == b"\x89PNG" else "image/jpeg"
     return f"data:{mime};base64,{base64.b64encode(data).decode()}"
@@ -99,12 +121,12 @@ def cover_assets(card: dict, out_dir: Path) -> dict:
     ranked, pos = info.get("ranked", []), info.get("pos", 0)
     photos = []
     out_dir.mkdir(parents=True, exist_ok=True)
-    for idx in ranked[pos:pos + 2]:
-        # 한 번 받은 사진은 저장해 두고 재사용 ([다른 사진]을 여러 번 눌러도 빠르게)
-        path = out_dir / f"cand_{idx:02d}.jpg"
-        if not path.exists():
-            path.write_bytes(requests.get(info["candidates"][idx]["url"], timeout=30).content)
-        photos.append(_data_uri(path.read_bytes()))
+    # Pixabay 사진 주소는 하루쯤 지나면 만료돼서, 지금 쓸 2장 + [다른 사진]으로 넘길 다음 2장까지 미리 받아 둔다.
+    # (며칠 뒤에 발행해도 표지가 그대로 나오게. 받아 둔 사진은 state.py로 GitHub과도 공유)
+    for idx in ranked[pos:pos + 4]:
+        data = _cached_photo(out_dir / f"cand_{idx:02d}.jpg", info["candidates"][idx]["url"])
+        if data and len(photos) < 2:
+            photos.append(_data_uri(data))
     if info.get("mode") == "drawn" and (out_dir / "drawn.png").exists():
         photos.insert(0, _data_uri((out_dir / "drawn.png").read_bytes()))
 

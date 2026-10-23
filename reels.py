@@ -260,6 +260,49 @@ def make_tip_reel(card: dict, card_dir: Path, out: Path | None = None, bgm: Path
     return out
 
 
+# ---------- 움직이는 릴스: 뉴스 ----------
+# 표지 사진(가만히) 위로 제목 단어가 툭툭 → 장마다 큰 제목 + 본문이 한 줄씩 → 그래서 나는?
+# (templates/reel_news.html의 render(t)를 1/30초마다 찍음, 위쪽 진행 막대가 계속 차올라 늘 움직임이 있음)
+NEWS_TIMING = {"hook": 1.6, "beat": 3.0, "outro": 1.8}
+
+
+def make_news_reel(card: dict, card_dir: Path, out: Path | None = None, bgm: Path | None = None) -> Path:
+    import json
+    import shutil
+
+    import images
+    import render
+
+    out = out or card_dir / "reels.mp4"
+    assets = images.cover_assets(card, card_dir)
+    beats = [{"heading": s["heading"], "lines": [l for l in s["body"].split("\n") if l.strip()],
+              # 두 번째 표지(첫 본문 장)엔 카드처럼 사진을 함께
+              "pic": assets["slide"] if i == 0 else None}
+             for i, s in enumerate(card["slides"])]
+    length = NEWS_TIMING["hook"] + NEWS_TIMING["beat"] * len(beats) + NEWS_TIMING["outro"]
+    data = {"title": checker_plain(card["hook_title"]), "subtitle": card.get("subtitle", ""),
+            "cover": assets["cover"], "logos": [{"svg": l.get("svg"), "name": l.get("name")} for l in assets["logos"]],
+            "rivalry": assets.get("rivalry", False), "beats": beats,
+            "takeaway": card.get("takeaway", ""), "tip": card.get("action_tip", ""),
+            "share": card.get("share_target", "친구"), "timing": NEWS_TIMING, "length": length}
+    html = (Path("templates/reel_news.html").read_text(encoding="utf-8")
+            .replace("<script>\nconst D", f"<script>window.DATA = {json.dumps(data, ensure_ascii=False)};</script>\n<script>\nconst D", 1))
+
+    frames = card_dir / "news_frames"
+    shutil.rmtree(frames, ignore_errors=True)
+    print(f"   🎞️ 뉴스 장면 찍는 중... ({length:.1f}초)")
+    render.shoot_frames(html, frames, 1080, 1920, length, 30)
+
+    args = [FFMPEG, "-y", "-loglevel", "error", "-framerate", "30", "-i", str(frames / "f_%04d.jpg")]
+    _add_bgm(args, length, bgm)
+    args += ["-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-r", "30",
+             "-t", f"{length:.2f}", "-movflags", "+faststart", str(out)]
+    subprocess.run(args, check=True)
+    shutil.rmtree(frames, ignore_errors=True)
+    print(f"   🎬 {out} ({length:.1f}초, 뉴스 릴스)")
+    return out
+
+
 def _add_bgm(args: list, length: float, bgm: Path | None) -> None:
     """두 번째 입력으로 배경음악을 붙인다 (곡마다 다른 소리 크기는 맞춰서). 음악이 없으면 그냥 둔다."""
     bgms = sorted(BGM_DIR.glob("*.mp3")) if BGM_DIR.exists() else []

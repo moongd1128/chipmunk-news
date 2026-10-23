@@ -2,8 +2,8 @@
 
 보관하는 것 (state.tar.gz 하나로 묶어서):
   data/            이미 쓴 기사 기록, 갱신된 인스타 토큰
-  output/<날짜>/   최근 며칠 치 원고(cards.json)와 카드 이미지
-  (릴스 영상·후보 사진 캐시는 크기가 커서 빼고, 필요하면 다시 만든다)
+  output/<날짜>/   최근 7일 치 원고(cards.json)와 받아 둔 표지 사진·사이트 캡처
+  (카드 이미지·영상처럼 다시 만들 수 있는 건 빼고, 받아 둔 표지 사진·사이트 캡처는 넣는다)
 
 배경음악(assets/bgm)도 공개 저장소에 올리면 안 돼서 같은 비공개 버킷에 둔다.
 
@@ -15,6 +15,7 @@
 """
 import io
 import os
+import re
 import sys
 import tarfile
 from datetime import date, timedelta
@@ -69,9 +70,20 @@ def _get(key: str) -> bytes | None:
     return r.content
 
 
+# 언제든 다시 만들 수 있는 것은 공유하지 않는다 (Supabase 무료는 파일 하나 50MB까지라 용량 아끼기)
+#   카드 이미지(01.jpg~)·스토리 사진은 [발행]·버튼 누를 때 다시 찍고, 영상·녹화·프레임은 그때그때 만든다
+_REMAKE = re.compile(r"^\d\d\.jpg$|^story\.jpg$|\.mp4$|\.webm$|\.png$")
+_REMAKE_DIRS = {"motion", "tip_frames", "news_frames"}
+
+
 def _keep(path: Path) -> bool:
-    """state에 넣을 파일인지: 큰 파일(영상·후보 사진 캐시)은 뺀다."""
-    return path.suffix != ".mp4" and not path.name.startswith("cand_")
+    """state에 넣을 파일인지. 원고(cards.json), 받아 둔 표지 후보 사진(cand_, 주소가 하루 만에 만료돼서 꼭 필요),
+    사이트 캡처(shots), AI 그림(drawn.png)은 넣고, 다시 만들 수 있는 건 뺀다."""
+    if _REMAKE_DIRS & set(path.parts):
+        return False
+    if path.name == "drawn.png":
+        return True
+    return not _REMAKE.search(path.name)
 
 
 def push() -> None:
