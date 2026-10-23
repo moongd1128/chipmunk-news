@@ -185,13 +185,15 @@ def make_tools_reel(card: dict, card_dir: Path, out: Path | None = None, bgm: Pa
 
     # 4) 장면마다 mp4로 만든 뒤 이어 붙인다
     def seg(path: Path, clip: dict, panel: Path, sec: float, start: float = 0.0, blur: bool = False) -> None:
+        # 첫 장면(blur)은 글씨가 첫 프레임부터 다 보여야 한다 (썸네일·첫인상). 사이트 장면만 글씨가 살짝 나타남
         vid = (f"[0:v]trim=start={clip['offset'] + start:.2f}:duration={sec:.2f},setpts=PTS-STARTPTS,"
                f"scale=1080:{VIDEO_H},fps=30")
         if blur:  # 첫 화면: 사이트가 움직이는 게 비치도록 흐리게만
             vid += f",scale=1080:1920,boxblur=18:2[v];color=c=0x140C06:s=1080x1920:d={sec:.2f}[bg];[bg][v]overlay=0:0[b]"
         else:
             vid += f"[v];color=c=0xFFF7EC:s=1080x1920:d={sec:.2f}[bg];[bg][v]overlay=0:{PANEL_H}[b]"
-        filt = vid + ";[1:v]format=rgba,fade=t=in:st=0:d=0.15:alpha=1[p];[b][p]overlay=0:0,format=yuv420p[o]"
+        fade = "" if blur else ",fade=t=in:st=0:d=0.15:alpha=1"
+        filt = vid + f";[1:v]format=rgba{fade}[p];[b][p]overlay=0:0,format=yuv420p[o]"
         subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-i", clip["video"], "-loop", "1", "-t", f"{sec:.2f}",
                         "-i", str(panel), "-filter_complex", filt, "-map", "[o]", "-t", f"{sec:.2f}", "-r", "30",
                         "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", str(path)],

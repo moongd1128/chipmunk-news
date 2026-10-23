@@ -193,8 +193,11 @@ def _prepare_reel(day: str, n: int) -> str:
 
     user_id = me()["user_id"]
     print("📤 릴스 영상 올리는 중...")
-    url = upload_public(video, f"{day}/card_{n:02d}/{int(time.time())}_reels.mp4", "video/mp4")
-    cid = _ig("POST", f"{user_id}/media", media_type="REELS", video_url=url,
+    stamp = int(time.time())
+    url = upload_public(video, f"{day}/card_{n:02d}/{stamp}_reels.mp4", "video/mp4")
+    # 썸네일은 첫 장면이 아니라 표지 카드로 따로 정한다 (첫 장면은 글씨가 나타나는 중이라 흐리거나 비어 보여서)
+    cover = upload_public(reels.make_story_image(card_dir), f"{day}/card_{n:02d}/{stamp}_reel_cover.jpg")
+    cid = _ig("POST", f"{user_id}/media", media_type="REELS", video_url=url, cover_url=cover,
               caption=build_caption(cards[n - 1]), share_to_feed=str(REEL_SHARE_TO_FEED).lower())["id"]
     print("⏳ 인스타가 영상 처리하는 중... (1~3분)")
     _wait_ready(cid, "영상", tries=60, wait=5)

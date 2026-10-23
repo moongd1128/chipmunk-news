@@ -105,7 +105,7 @@ function render(t) {
   if (t < T.hook) {  // 첫 프레임부터 글씨가 보이게: 0.25초 안에 다 올라옴
     const s = document.getElementById("hook"); s.style.display = "flex";
     const [tag, h1, p] = s.querySelectorAll(".in");
-    show(tag, 1); show(h1, 0.35 + t / 0.25); show(p, (t - 0.35) / 0.3);
+    show(tag, 1); show(h1, 1); show(p, (t - 0.2) / 0.3);  // 제목은 첫 프레임부터 또렷하게 (썸네일·첫인상)
     return;
   }
   start = T.hook;
