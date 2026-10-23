@@ -80,7 +80,10 @@ jobs:
           cache: pip
       - name: 패키지 설치
         timeout-minutes: 5
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          # 사이트 모음 릴스에서 사이트 화면을 녹화할 때 쓰는 작은 영상 도구 (약 2MB, 크롬은 GitHub에 깔린 것 사용)
+          python -m playwright install ffmpeg
       # 크롬은 따로 받지 않고 GitHub에 이미 깔린 크롬을 쓴다 (render.py)
       # → 크롬(191MB)·우분투 패키지를 받다가 10~16분씩 멈추던 일이 없어짐
       # 글꼴·이모지(인터넷에서 받는 것)는 한 번 받아두고 다시 씀
@@ -94,8 +97,16 @@ jobs:
         timeout-minutes: 3
         continue-on-error: true
         run: sudo apt-get install -y -qq --no-install-recommends fonts-noto-cjk > /dev/null
-      - name: 크롬 켜지는지 확인
-        run: python -c "from playwright.sync_api import sync_playwright as p; b = p().start().chromium.launch(channel='chrome'); print('크롬 OK', b.version)"
+      - name: 크롬·화면 녹화 되는지 확인
+        run: |
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          b = sync_playwright().start().chromium.launch(channel="chrome")
+          c = b.new_context(record_video_dir="/tmp/rec")
+          c.new_page().goto("about:blank")
+          c.close()
+          print("크롬·녹화 OK", b.version)
+          PY
       - name: 버튼 처리
         run: python bot_once.py
         env:
