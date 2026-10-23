@@ -78,7 +78,14 @@ TITLE_WORDING = """  제목은 '이 게시물에 뭐가 들었는지'가 아니�
     핵심 단어는 앞쪽 10자 안에. 기능 이름·업계 용어·딱딱한 말(기능 소개, 활용 방안, 지원)은 쓰지 마
   방법(답)은 제목에서 다 말하지 마. 결과만 약속하고 방법은 넘겨서 보게 해
     ❌ "옷 사기 전에 AI로 입어보기" (방법을 다 알려줌) → ⭕ "옷 고를 때 실패 안 하는 법"
-  '무엇이 들었는지'(직원 6명, 문장 5개, 스킬 4개)는 부제가 맡아. 제목에 숫자를 넣는다면 결과·문제와 함께"""
+  '무엇이 들었는지'(직원 6명, 문장 5개, 스킬 4개)는 부제가 맡아. 제목에 숫자를 넣는다면 결과·문제와 함께
+  다듬기 (사용자가 직접 고친 예에서 배운 것):
+    - "~ 방법"·억지 숫자(0%) 대신 말하듯이: "AI 느낌 0% 만드는 디자인 방법" → "AI 느낌 아예 안 나게 하는 법"
+    - 결과를 바로 말하는 가장 짧은 말이 이긴다: "나 대신 AI 야근시키는 법" → "AI로 칼퇴하는 법"
+    - 흐릿한 말(잡무·고생·효율) 대신 구체적인 아픈 말(야근·칼퇴·반려): "아직도 잡무 혼자 다 고생해?" →
+      "아직도 야근해? AI로 칼퇴하는 법 알려줄게" (질문 + 약속을 친구처럼)
+    - 내용 개수는 빼고 누가 하는지 분명하게: "내 업무 6가지 다 넘기는 법" → "내 업무 AI한테 다 넘기는 법"
+    - 제목에는 이모지를 넣지 마"""
 
 
 # 2번째 장 = 두 번째 표지 (뉴스·꿀팁 공통)
@@ -595,7 +602,7 @@ def pick_scenes(slides: list[dict], tiles: list[list[Path]]) -> list[int]:
 
 
 class TitleIdea(BaseModel):
-    text: str    # 제목 (22자 이내)
+    text: str    # 제목 (checker.MAX_TITLE자 이내)
     device: str  # 쓴 장치 번호와 이름 (예: "1 탐내는 결과")
 
 
@@ -627,7 +634,7 @@ def make_titles(card: dict) -> list[str]:
     (원고와 같이 지으면 내용을 설명하는 밋밋한 제목이 나오기 쉬워서 따로 뽑는다)"""
     ideas = _generate(f"""{PERSONA}
 
-아래 카드뉴스의 **표지 제목 후보 {TITLE_CANDIDATES}개**를 지어줘. 각 후보는 22자 이내, 서로 다른 장치를 써.
+아래 카드뉴스의 **표지 제목 후보 {TITLE_CANDIDATES}개**를 지어줘. 각 후보는 {checker.MAX_TITLE}자 이내(짧을수록 좋아), 서로 다른 장치를 써.
 {TITLE_WORDING}
 device에는 쓴 장치 번호와 이름을 적어 (예: "4 내 문제 진단").
 원고에 없는 효과·숫자는 지어내지 마. 숫자를 쓰면 원고에 있는 개수와 맞춰.
@@ -636,7 +643,10 @@ device에는 쓴 장치 번호와 이름을 적어 (예: "4 내 문제 진단").
     seen, ok = set(), []
     for i in ideas:  # 너무 길거나 겹치는 건 코드로 뺀다
         t = checker.plain(i.text).strip()
-        if 4 <= len(checker.EMOJI.sub("", t).strip()) <= 22 and t not in seen:
+        t = checker.EMOJI.sub("", t).replace("️", "").strip()  # 제목엔 이모지 X (사용자가 직접 뺌)
+        if t.endswith("방법"):  # "~ 디자인 방법"처럼 딱딱한 끝맺음은 버린다 ("~하는 법"으로)
+            continue
+        if 4 <= len(t) <= checker.MAX_TITLE and t not in seen:
             seen.add(t)
             ok.append(TitleIdea(text=t, device=i.device))
     if not ok:
@@ -646,6 +656,7 @@ device에는 쓴 장치 번호와 이름을 적어 (예: "4 내 문제 진단").
 아래 제목 중에서 **0.5초 만에 손가락이 멈추고 눌러 보고 싶은 순서대로** 번호를 줄 세워줘.
 기준: 내 얘기 같은가, 결과가 탐나는가, 궁금해서 못 참겠는가, 안 보면 나만 손해 같은가.
 설명 같거나 뻔하거나 딱딱한 제목은 뒤로.
+결과를 가장 짧고 바로 말하는 제목, 친구가 말하듯 자연스러운 제목을 앞으로 (예: "AI로 칼퇴하는 법").
 
 {listing}""", TitleRank).order
     ranked = [ok[k] for k in dict.fromkeys(order) if 0 <= k < len(ok)]

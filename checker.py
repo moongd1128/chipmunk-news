@@ -47,6 +47,7 @@ NUMBER = re.compile(r"\d[\d,.]*(?:\s*(?:[만천억조]|분의|명\s*중)\s*\d*[\
 # 숫자 바로 뒤에 붙은 외국 돈만 잡는다 ("이유로"의 '유로'는 안 잡힘)
 FOREIGN_MONEY = re.compile(r"\d[\d,.]*\s*[만천억조]?\s*(?:\d[\d,.]*\s*[만천억조]?\s*)*(달러|유로|파운드|위안)")
 MAX_LINE = 24
+MAX_TITLE = 26  # 표지 제목 ("아직도 야근해? AI로 칼퇴하는 법 알려줄게" 같은 질문+약속형이 들어가게)
 MAX_HOOK2 = 18  # 2번째 장(두 번째 표지) 제목 길이
 MAX_HIGHLIGHTS = 2  # 본문 한 장에 **강조** 최대 개수
 HIGHLIGHT = re.compile(r"\*\*(.+?)\*\*", re.S)
@@ -155,8 +156,8 @@ def find_problems(card: dict) -> list[str]:
     problems = []
 
     title = EMOJI.sub("", card["hook_title"]).strip()
-    if len(title) > 22:
-        problems.append(f"표지 제목이 너무 길어요({len(title)}자): 22자 이내로 줄이기")
+    if len(title) > MAX_TITLE:
+        problems.append(f"표지 제목이 너무 길어요({len(title)}자): {MAX_TITLE}자 이내로 줄이기")
     if len(EMOJI.findall(card["hook_title"])) > 1:
         problems.append("표지 제목에 이모지가 2개 이상: 1개까지만")
 
@@ -164,8 +165,8 @@ def find_problems(card: dict) -> list[str]:
     if not 3 <= len(options) <= 5:
         problems.append(f"제목 후보가 {len(options)}개: 3~5개로")
     for t in options:
-        if len(EMOJI.sub("", t).strip()) > 22:
-            problems.append(f"제목 후보가 너무 길어요: '{t}' → 22자 이내로")
+        if len(EMOJI.sub("", t).strip()) > MAX_TITLE:
+            problems.append(f"제목 후보가 너무 길어요: '{t}' → {MAX_TITLE}자 이내로")
     if len(card.get("action_tip", "")) > 32:
         problems.append("action_tip이 너무 길어요: 30자 이내로")
     if len(card.get("share_target", "")) > 12:
