@@ -173,9 +173,9 @@ def find_problems(card: dict) -> list[str]:
         problems.append("share_target이 너무 길어요: 12자 이내로")
 
     # 꿀팁은 공감 1 + 방법 3 + 마무리 1, AI 사이트 모음은 사이트 5개
-    want = 5 if card.get("kind") in ("tip", "tools") else 4
-    if len(card["slides"]) != want:
-        problems.append(f"슬라이드가 {len(card['slides'])}장: 정확히 {want}장으로")
+    want = {"tip": (4, 5), "tools": (5, 5)}.get(card.get("kind"), (4, 4))  # 꿀팁은 약속에 맞는 방법만 2~3개
+    if not want[0] <= len(card["slides"]) <= want[1]:
+        problems.append(f"슬라이드가 {len(card['slides'])}장: {want[0]}~{want[1]}장으로")
 
     for n, s in enumerate(card["slides"], 1):
         if card.get("kind") == "tools":

@@ -416,11 +416,14 @@ def write_tip_card(article: dict, body: str) -> CardNews:
 {TITLE_WORDING}
 - hook_title: title_options 중 가장 클릭하고 싶은 것 하나를 그대로
 - subtitle: 무엇을 얻는지 한 줄 (25자 이내, 예: "'더 잘해봐' 대신 쓰는 프롬프트 3개")
-- slides: 정확히 5장. 각 heading은 15자 이내. 한 줄은 20자 안팎({checker.MAX_LINE}자 넘기지 말기)
+- **모든 방법 장은 표지 제목이 약속한 것 하나를 지켜야 해.** 글에 기능이 여러 개 섞여 있어도
+  약속과 상관없는 기능은 넣지 마 (2026-10-24: "인터넷 쇼핑 실패 줄이는 법"에 '재킷 색 바꾸기'·'옷 얼룩 지우기'를
+  넣었더니 보던 사람이 그 장에서 다 나갔어). 약속에 맞는 방법이 2개뿐이면 2개만 써
+- slides: 4~5장 (공감 1 + 방법 2~3 + 마무리 1). 각 heading은 15자 이내. 한 줄은 20자 안팎({checker.MAX_LINE}자 넘기지 말기)
   인기 꿀팁 계정의 흐름을 따라:
   1장 공감(① + ②): 독자가 겪는 불편 2줄 + "~해서가 아니라 ~가 없어서예요" 1줄. body 3줄(줄마다 \\n). bad·good은 빈칸
     (예: heading "보고서가 늘 밋밋하다면" / body "AI한테 맡겨도\\n결과가 뻔하게 나오죠\\nAI가 아니라 기준이 없어서예요")
-  2~4장 방법: 장마다 방법 하나. heading은 "1. ~", "2. ~"처럼 번호로 시작
+  방법 장(2~3개): 장마다 방법 하나, 모두 같은 약속을 지키는 방법. heading은 "1. ~", "2. ~"처럼 번호로 시작
     ❌/⭕ 비교로 보여줄 수 있으면 bad와 good을 채워 (화면에 ❌ 회색 박스, ⭕ 주황 박스로 나뉘어 나와요):
       bad: 사람들이 흔히 하는 방식 한 문장 (따옴표 없이, 30자 이내)
       good: **그대로 복사해서 쓸 수 있는** 문장·프롬프트 (따옴표 없이, 2~3줄, 줄마다 \\n, 한 줄 {checker.MAX_LINE}자 이내)
@@ -619,7 +622,8 @@ class TitleIdeas(BaseModel):
 
 
 class TitleRank(BaseModel):
-    order: list[int]  # 멈추고 싶은 순서대로 후보 번호
+    order: list[int]   # 멈추고 싶은 순서대로 후보 번호
+    broken: list[int]  # 내용이 약속을 다 못 지키는 제목 번호 (보다가 나가게 만듦)
 
 
 TITLE_CANDIDATES = 8  # 한 번에 뽑는 제목 후보 수
@@ -646,6 +650,8 @@ def make_titles(card: dict) -> list[str]:
 {TITLE_WORDING}
 device에는 쓴 장치 번호와 이름을 적어 (예: "4 내 문제 진단").
 원고에 없는 효과·숫자는 지어내지 마. 숫자를 쓰면 원고에 있는 개수와 맞춰.
+**제목이 약속하는 건 내용의 모든 방법(사이트)이 지켜야 해.** 첫 번째 방법 하나에만 맞는 제목은 금지
+(보던 사람이 약속과 다른 장에서 바로 나가).
 
 {_brief(card)}""", TitleIdeas, think=True).ideas
     seen, ok = set(), []
@@ -660,15 +666,26 @@ device에는 쓴 장치 번호와 이름을 적어 (예: "4 내 문제 진단").
     if not ok:
         return []
     listing = "\n".join(f"[{k}] {i.text}" for k, i in enumerate(ok))
-    order = _generate(f"""너는 인스타 피드를 휙휙 넘기는 한국 20~40대야. AI를 더 잘 쓰고 싶어 하는 직장인·크리에이터·
+    rank = _generate(f"""너는 인스타 피드를 휙휙 넘기는 한국 20~40대야. AI를 더 잘 쓰고 싶어 하는 직장인·크리에이터·
 프리랜서·대학생 중 이 카드를 볼 법한 사람의 마음으로 골라.
 아래 제목 중에서 **0.5초 만에 손가락이 멈추고 눌러 보고 싶은 순서대로** 번호를 줄 세워줘.
 기준: 내 얘기 같은가, 결과가 탐나는가, 궁금해서 못 참겠는가, 안 보면 나만 손해 같은가.
 설명 같거나 뻔하거나 딱딱한 제목은 뒤로.
 결과를 가장 짧고 바로 말하는 제목, 친구가 말하듯 자연스러운 제목을 앞으로 (예: "AI로 칼퇴하는 법").
 
-{listing}""", TitleRank).order
-    ranked = [ok[k] for k in dict.fromkeys(order) if 0 <= k < len(ok)]
+그리고 아래 내용을 보고, **제목을 보고 들어온 사람이 내용의 어느 장에서 "이거 아닌데?" 하고 나갈 제목**은
+broken에 번호를 적어줘. 제목의 약속을 내용의 모든 방법이 지켜야 해.
+
+제목 후보:
+{listing}
+
+내용:
+{_brief(card)}""", TitleRank)
+    broken = {k for k in rank.broken if 0 <= k < len(ok)}
+    if len(broken) < len(ok):  # 약속을 못 지키는 제목은 버린다 (전부 걸리면 그대로 두고 순위만)
+        ok = [i if k not in broken else None for k, i in enumerate(ok)]
+    ranked = [ok[k] for k in dict.fromkeys(rank.order) if 0 <= k < len(ok) and ok[k]]
+    ok = [i for i in ok if i]
     ranked += [i for i in ok if i not in ranked]
     top, used = [], set()
     for i in ranked:  # 위에서부터, 장치가 겹치지 않게 먼저 고르고
