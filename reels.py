@@ -165,13 +165,15 @@ def make_tools_reel(card: dict, card_dir: Path, out: Path | None = None, bgm: Pa
     clips = []
     for i, s in enumerate(slides, 1):
         meta = work / f"site_{i}.json"
-        if meta.exists() and Path(json.loads(meta.read_text())["video"]).exists():
-            info = json.loads(meta.read_text())
+        old = json.loads(meta.read_text()) if meta.exists() else {}
+        # 같은 장면을 녹화해 둔 게 있을 때만 재사용 (장면을 다시 고르면 새로 녹화)
+        if old.get("scene_y") == s["scene_y"] and Path(old.get("video", "")).exists():
+            info = old
         else:
             print(f"   🎥 {s['domain']} 화면 녹화 중...")
             video, tail = render.record_site(s["url"], work / f"rec_{i}", 1080, VIDEO_H, SITE_SEC, s["scene_y"])
             # 스크롤이 시작된 곳 = 영상 길이 - (스크롤 시작~끝)
-            info = {"video": str(video), "offset": max(0.0, _duration(video) - tail)}
+            info = {"video": str(video), "offset": max(0.0, _duration(video) - tail), "scene_y": s["scene_y"]}
             meta.write_text(json.dumps(info))
         clips.append(info)
 
