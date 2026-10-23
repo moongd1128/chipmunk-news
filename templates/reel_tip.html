@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=block">
+<!--
+  꿀팁 움직이는 릴스 (1080x1920). reels.make_tip_reel이 render(t)를 1/30초마다 불러서 한 장씩 찍는다.
+  장면: 훅(표지 문구) → 방법마다 [❌ 흔한 말 → 줄 그어짐 → ⭕ 좋은 말이 한 글자씩 타이핑] → 마무리
+-->
+<style>
+  :root { --bg:#FFF7EC; --ink:#2B1D14; --muted:#8A6F5A; --accent:#F2762E; --soft:#F7E2C8; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:1080px; height:1920px; overflow:hidden; background:var(--bg); color:var(--ink);
+    font-family:"Pretendard","Noto Color Emoji",sans-serif; word-break:keep-all; }
+  .scene { position:absolute; inset:0; padding:150px 80px 0; display:none; }
+  .brand { position:absolute; top:70px; left:80px; background:var(--ink); color:#fff; font-size:32px; font-weight:700;
+    padding:14px 26px; border-radius:999px; }
+  .handle { position:absolute; bottom:70px; right:80px; font-size:32px; font-weight:700; color:var(--muted); }
+  .in { opacity:0; transform:translateY(28px); }
+  h1, h2 { text-wrap: balance; }
+  /* 방법 장면도 화면 가운데에 (아래가 비어 보이지 않게) */
+  .method { flex-direction:column; justify-content:center; padding-bottom:140px; }
+
+  /* 훅 */
+  #hook { display:flex; flex-direction:column; justify-content:center; padding-bottom:120px; }
+  .tag { align-self:flex-start; background:#FFD24A; font-size:42px; font-weight:800; padding:14px 26px; border-radius:16px; }
+  #hook h1 { margin-top:40px; font-size:124px; line-height:1.15; font-weight:900; letter-spacing:-4px; }
+  #hook p { margin-top:36px; font-size:50px; font-weight:600; color:var(--muted); line-height:1.4; }
+
+  /* 방법 */
+  .step { font-size:40px; font-weight:800; color:var(--accent); }
+  .step small { color:var(--muted); font-size:32px; }
+  .method h2 { margin-top:14px; font-size:92px; line-height:1.18; font-weight:900; letter-spacing:-3px; }
+  .lbl { display:inline-block; font-size:36px; font-weight:800; padding:10px 20px; border-radius:12px; }
+  .bad { margin-top:70px; }
+  .bad .lbl { background:#DCD1C4; color:#6E5F52; }
+  .bubble { margin-top:20px; border-radius:36px; padding:38px 46px; font-size:52px; line-height:1.45; position:relative; }
+  .bad .bubble { background:#EFE7DD; color:#8A7A6C; font-weight:600; }
+  .strike { position:absolute; left:40px; top:50%; height:7px; background:rgba(138,122,108,.75); border-radius:4px; width:0; }
+  .good { margin-top:56px; }
+  .good .lbl { background:var(--accent); color:#fff; }
+  .good .bubble { background:#fff; border:7px solid var(--accent); font-weight:800; min-height:280px;
+    box-shadow:0 22px 50px rgba(242,118,46,.20); }
+  .cursor { display:inline-block; width:6px; height:58px; background:var(--accent); margin-left:6px; vertical-align:-8px; }
+  .note { margin-top:44px; font-size:44px; font-weight:700; color:var(--muted); line-height:1.45; }
+
+  /* 마무리 */
+  #outro { display:flex; flex-direction:column; justify-content:center; padding-bottom:120px; }
+  #outro .lbl { align-self:flex-start; background:var(--accent); color:#fff; }
+  #outro h2 { margin-top:36px; font-size:96px; line-height:1.2; font-weight:900; letter-spacing:-3px; }
+  #outro .save { margin-top:60px; font-size:56px; font-weight:800; }
+  #outro .share { margin-top:22px; font-size:46px; font-weight:700; color:var(--muted); }
+</style>
+</head>
+<body>
+<span class="brand">🐿️ 칩다람 · AI 꿀팁</span>
+<span class="handle">@chipmunk.news.kr</span>
+
+<div class="scene" id="hook">
+  <span class="tag in">💡 AI 꿀팁 · 저장해두세요</span>
+  <h1 class="in" id="hookTitle"></h1>
+  <p class="in" id="hookSub"></p>
+</div>
+<div id="methods"></div>
+<div class="scene" id="outro">
+  <span class="lbl in">오늘의 꿀팁 정리</span>
+  <h2 class="in" id="outroTitle"></h2>
+  <p class="save in">📌 저장해두고 따라 해보세요</p>
+  <p class="share in" id="outroShare"></p>
+</div>
+
+<script>
+const D = window.DATA;
+const T = D.timing;
+const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+document.getElementById("hookTitle").innerHTML = esc(D.title);
+document.getElementById("hookSub").innerHTML = esc(D.subtitle);
+document.getElementById("outroTitle").innerHTML = esc(D.takeaway);
+document.getElementById("outroShare").innerHTML = "📩 <b>" + esc(D.share) + "</b>에게 보내주세요";
+D.methods.forEach((m, i) => {
+  document.getElementById("methods").insertAdjacentHTML("beforeend", `
+  <div class="scene method" id="m${i}">
+    <div class="step in">방법 ${i + 1}<small>/${D.methods.length}</small></div>
+    <h2 class="in">${esc(m.heading)}</h2>
+    <div class="bad in"><span class="lbl">❌ 이렇게 말고</span>
+      <div class="bubble"><span>${esc(m.bad)}</span><i class="strike"></i></div></div>
+    <div class="good in"><span class="lbl">⭕ 이렇게 써보세요</span>
+      <div class="bubble"><span class="typed"></span><i class="cursor"></i></div></div>
+    <p class="note in">${esc(m.note)}</p>
+  </div>`);
+});
+
+// 0~1 사이로 자르고 부드럽게
+const clamp = x => Math.min(Math.max(x, 0), 1);
+const ease = x => 1 - Math.pow(1 - clamp(x), 3);
+function show(el, k) {  // k: 0(안 보임) ~ 1(제자리)
+  el.style.opacity = clamp(k * 1.4);
+  el.style.transform = `translateY(${(1 - ease(k)) * 28}px)`;
+}
+
+function render(t) {
+  document.querySelectorAll(".scene").forEach(s => s.style.display = "none");
+  let start = 0;
+  if (t < T.hook) {  // 첫 프레임부터 글씨가 보이게: 0.25초 안에 다 올라옴
+    const s = document.getElementById("hook"); s.style.display = "flex";
+    const [tag, h1, p] = s.querySelectorAll(".in");
+    show(tag, 1); show(h1, 0.35 + t / 0.25); show(p, (t - 0.35) / 0.3);
+    return;
+  }
+  start = T.hook;
+  for (let i = 0; i < D.methods.length; i++) {
+    const len = T.method;
+    if (t < start + len) {
+      const lt = t - start, s = document.getElementById("m" + i), m = D.methods[i];
+      s.style.display = "flex";
+      const [step, h2, bad, good, note] = s.querySelectorAll(".in");
+      show(step, lt / 0.2); show(h2, lt / 0.25);
+      show(bad, (lt - 0.2) / 0.25);
+      s.querySelector(".strike").style.width = (ease((lt - 0.75) / 0.35) * (s.querySelector(".bad .bubble span").offsetWidth)) + "px";
+      show(good, (lt - 1.1) / 0.2);
+      // ⭕ 문장을 한 글자씩 (줄바꿈 유지), 다 쓰면 커서만 깜빡
+      const chars = [...m.good];
+      const typeEnd = len - 1.0;
+      const n = Math.round(chars.length * clamp((lt - 1.25) / (typeEnd - 1.25)));
+      s.querySelector(".typed").innerHTML = esc(chars.slice(0, n).join("")).replace(/\n/g, "<br>");
+      s.querySelector(".cursor").style.opacity = (n < chars.length || Math.floor(lt * 3) % 2 === 0) ? 1 : 0;
+      show(note, (lt - typeEnd) / 0.3);
+      return;
+    }
+    start += len;
+  }
+  const s = document.getElementById("outro"); s.style.display = "flex";
+  const lt = t - start;
+  s.querySelectorAll(".in").forEach((el, k) => show(el, (lt - k * 0.15) / 0.25));
+}
+</script>
+</body>
+</html>

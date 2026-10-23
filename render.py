@@ -218,6 +218,26 @@ class _Shooter:
                     target_y: float = 0.0) -> tuple[Path, float]:
         return self._pool.submit(self._record_site, url, out_dir, width, height, seconds, target_y).result()
 
+    def _shoot_frames(self, html: str, out_dir: Path, width: int, height: int, seconds: float, fps: int) -> int:
+        """render(t) 함수가 있는 HTML을 1/fps초마다 한 장씩 찍는다 (글씨가 또렷한 움직이는 릴스용). 찍은 장 수."""
+        self._ensure_page()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        page = self._browser.new_page(viewport={"width": width, "height": height})
+        try:
+            page.route(re.compile(r"(jsdelivr\.net|fonts\.googleapis\.com|fonts\.gstatic\.com)"), _cached_route)
+            page.set_content(html, wait_until="networkidle")
+            page.evaluate("document.fonts.ready")
+            frames = int(seconds * fps)
+            for k in range(frames):
+                page.evaluate(f"render({k / fps})")
+                page.screenshot(path=str(out_dir / f"f_{k:04d}.jpg"), type="jpeg", quality=90)
+            return frames
+        finally:
+            page.close()
+
+    def shoot_frames(self, html: str, out_dir: Path, width: int, height: int, seconds: float, fps: int) -> int:
+        return self._pool.submit(self._shoot_frames, html, out_dir, width, height, seconds, fps).result()
+
     def _shoot_png(self, html: str, path: Path, width: int, height: int) -> None:
         """투명 배경 PNG로 찍는다 (릴스 위에 얹을 글씨 판)."""
         self._ensure_page()
@@ -274,6 +294,11 @@ def record_site(url: str, out_dir: Path, width: int, height: int, seconds: float
 # 쿠키 안내 창은 '동의'를 누르지 않고 화면에서만 숨긴다
 _HIDE_COOKIES = ("[id*=cookie i],[class*=cookie i],[id*=consent i],[class*=consent i],"
                  "[aria-label*=cookie i]{display:none!important}")
+
+
+def shoot_frames(html: str, out_dir: Path, width: int, height: int, seconds: float, fps: int = 30) -> int:
+    """render(t)가 있는 HTML을 한 장씩 찍는다 (꿀팁·뉴스 움직이는 릴스용). 찍은 장 수."""
+    return _shooter.shoot_frames(html, out_dir, width, height, seconds, fps)
 
 
 def shoot_png(html: str, path: Path, width: int, height: int) -> None:

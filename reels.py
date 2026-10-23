@@ -221,6 +221,58 @@ def make_tools_reel(card: dict, card_dir: Path, out: Path | None = None, bgm: Pa
     return out
 
 
+# ---------- 움직이는 릴스: 꿀팁 ----------
+# ❌ 흔한 말 → 줄 그어짐 → ⭕ 좋은 말이 한 글자씩 타이핑 (templates/reel_tip.html의 render(t)를 한 장씩 찍음)
+TIP_TIMING = {"hook": 1.4, "method": 3.8, "outro": 1.6}
+
+
+def make_tip_reel(card: dict, card_dir: Path, out: Path | None = None, bgm: Path | None = None) -> Path:
+    import json
+    import shutil
+
+    import render
+
+    out = out or card_dir / "reels.mp4"
+    methods = [{"heading": re.sub(r"^\d+\.\s*", "", s["heading"]), "bad": s["bad"], "good": s["good"],
+                "note": checker_plain(s["body"]).replace("\n", " ")}
+               for s in card["slides"] if s.get("bad") and s.get("good")]
+    if not methods:
+        raise ValueError("❌/⭕ 비교 장이 없어서 타이핑 릴스를 못 만들어요")
+    data = {"title": checker_plain(card["hook_title"]), "subtitle": card.get("subtitle", ""),
+            "takeaway": card.get("takeaway", ""), "share": card.get("share_target", "친구"),
+            "methods": methods, "timing": TIP_TIMING}
+    length = TIP_TIMING["hook"] + TIP_TIMING["method"] * len(methods) + TIP_TIMING["outro"]
+    html = (Path("templates/reel_tip.html").read_text(encoding="utf-8")
+            .replace("<script>\nconst D", f"<script>window.DATA = {json.dumps(data, ensure_ascii=False)};</script>\n<script>\nconst D", 1))
+
+    frames = card_dir / "tip_frames"
+    shutil.rmtree(frames, ignore_errors=True)
+    print(f"   🎞️ 타이핑 장면 찍는 중... ({length:.1f}초)")
+    render.shoot_frames(html, frames, 1080, 1920, length, 30)
+
+    args = [FFMPEG, "-y", "-loglevel", "error", "-framerate", "30", "-i", str(frames / "f_%04d.jpg")]
+    _add_bgm(args, length, bgm)
+    args += ["-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-r", "30",
+             "-t", f"{length:.2f}", "-movflags", "+faststart", str(out)]
+    subprocess.run(args, check=True)
+    shutil.rmtree(frames, ignore_errors=True)
+    print(f"   🎬 {out} ({length:.1f}초, 타이핑 릴스)")
+    return out
+
+
+def _add_bgm(args: list, length: float, bgm: Path | None) -> None:
+    """두 번째 입력으로 배경음악을 붙인다 (곡마다 다른 소리 크기는 맞춰서). 음악이 없으면 그냥 둔다."""
+    bgms = sorted(BGM_DIR.glob("*.mp3")) if BGM_DIR.exists() else []
+    if not bgms:
+        return
+    bgm = bgm or random.choice(bgms)
+    args += ["-stream_loop", "-1", "-i", str(bgm), "-filter_complex",
+             f"[1:a]atrim=0:{length:.2f},afade=t=in:d=0.3,afade=t=out:st={length - 0.8:.2f}:d=0.8,"
+             "loudnorm=I=-15:TP=-1.5:LRA=11,aresample=44100[a]",
+             "-map", "0:v", "-map", "[a]", "-c:a", "aac", "-b:a", "192k"]
+    print(f"   🎵 배경음악: {bgm.name}")
+
+
 def _duration(video: Path) -> float:
     """영상 길이(초)."""
     r = subprocess.run([FFMPEG, "-i", str(video)], capture_output=True, text=True)
