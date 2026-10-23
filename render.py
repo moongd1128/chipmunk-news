@@ -133,6 +133,57 @@ class _Shooter:
     def shoot_site(self, url: str, path: Path) -> str:
         return self._pool.submit(self._shoot_site, url, path).result()
 
+    def _record_site(self, url: str, out_dir: Path, width: int, height: int, seconds: float) -> tuple[Path, float]:
+        """사이트를 열고 위→아래로 천천히 스크롤하는 모습을 녹화한다. (영상 파일, 스크롤 시작 시각)"""
+        import time
+
+        self._ensure_page()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        ctx = self._browser.new_context(viewport={"width": width, "height": height},
+                                        record_video_dir=str(out_dir), record_video_size={"width": width, "height": height})
+        started = time.time()
+        page = ctx.new_page()
+        try:
+            try:
+                page.goto(url, wait_until="load", timeout=30_000)
+            except Exception:  # noqa: BLE001 - 느린 사이트는 뜬 데까지만
+                pass
+            page.wait_for_timeout(1500)
+            page.add_style_tag(content="[id*=cookie i],[class*=cookie i],[id*=consent i],[class*=consent i],"
+                                       "[aria-label*=cookie i]{display:none!important}")
+            page.wait_for_timeout(200)
+            offset = time.time() - started
+            # 사람처럼 마우스 휠로 내린다 (자체 스크롤을 쓰는 사이트는 프로그램 스크롤이 안 먹어서)
+            # 첫 프레임부터 움직이게: 처음엔 빠르게, 점점 천천히
+            page.mouse.move(width / 2, height / 2)
+            steps = int(seconds * 30)
+            for k in range(steps):
+                page.mouse.wheel(0, height * 2.2 * (1 - k / steps) / steps)
+                page.wait_for_timeout(1000 / 30)
+            page.wait_for_timeout(300)
+        finally:
+            video = page.video
+            ctx.close()
+        return Path(video.path()), offset
+
+    def record_site(self, url: str, out_dir: Path, width: int, height: int, seconds: float) -> tuple[Path, float]:
+        return self._pool.submit(self._record_site, url, out_dir, width, height, seconds).result()
+
+    def _shoot_png(self, html: str, path: Path, width: int, height: int) -> None:
+        """투명 배경 PNG로 찍는다 (릴스 위에 얹을 글씨 판)."""
+        self._ensure_page()
+        page = self._browser.new_page(viewport={"width": width, "height": height})
+        try:
+            page.route(re.compile(r"(jsdelivr\.net|fonts\.googleapis\.com|fonts\.gstatic\.com)"), _cached_route)
+            page.set_content(html, wait_until="networkidle")
+            page.evaluate("document.fonts.ready")
+            page.screenshot(path=str(path), type="png", omit_background=True)
+        finally:
+            page.close()
+
+    def shoot_png(self, html: str, path: Path, width: int, height: int) -> None:
+        self._pool.submit(self._shoot_png, html, path, width, height).result()
+
 
 def _cached_route(route) -> None:
     """글꼴·CSS 요청은 디스크에 저장해 두고 다음부터는 인터넷 대신 그걸 쓴다."""
@@ -157,6 +208,16 @@ _shooter = _Shooter()
 def shoot_site(url: str, path: Path) -> str:
     """사이트 첫 화면을 캡처하고, 화면에 보이는 글을 돌려준다 (AI 사이트 모음용). 실패하면 빈 글."""
     return _shooter.shoot_site(url, path)
+
+
+def record_site(url: str, out_dir: Path, width: int, height: int, seconds: float) -> tuple[Path, float]:
+    """사이트를 스크롤하는 모습을 녹화한다 (움직이는 릴스용). (영상 파일, 스크롤 시작 시각)"""
+    return _shooter.record_site(url, out_dir, width, height, seconds)
+
+
+def shoot_png(html: str, path: Path, width: int, height: int) -> None:
+    """투명 배경 PNG로 찍는다 (릴스 위 글씨 판)."""
+    _shooter.shoot_png(html, path, width, height)
 
 
 def render(day: str, only: int | None = None, refresh: bool = False, cover_only: bool = False) -> list[Path]:

@@ -90,6 +90,130 @@ def make_reel(card_dir: Path, out: Path | None = None, bgm: Path | None = None) 
     return out
 
 
+# ---------- 움직이는 릴스: AI 사이트 모음 ----------
+# 정지된 카드를 넘기는 대신, 사이트 화면이 실제로 스크롤되는 녹화 위에 큰 글씨를 얹는다.
+# 첫 1초는 표지 문구(훅)를 크게, 그다음 사이트마다 짧게 → 10초 안팎
+
+HOOK_SEC = 1.1      # 첫 화면: 표지 문구
+SITE_SEC = 1.9      # 사이트 하나
+PANEL_H = 600       # 위쪽 글씨 판 높이
+VIDEO_H = 1180      # 가운데 사이트 녹화 높이
+_FONT = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">'
+_PANEL_CSS = """* { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:1080px; height:1920px; background:transparent; font-family:"Pretendard",sans-serif; color:#2B1D14;
+  word-break:keep-all; }
+.top { position:absolute; top:0; left:0; right:0; height:%dpx; background:#FFF7EC; padding:110px 72px 0; }
+.num { font-size:44px; font-weight:800; color:#F2762E; }
+.num small { font-size:30px; color:#8A6F5A; }
+.dom { margin-left:14px; font-size:44px; font-weight:800; }
+h1 { margin-top:26px; font-size:92px; line-height:1.18; font-weight:800; letter-spacing:-3px; }
+.hl { color:#F2762E; }
+.bottom { position:absolute; bottom:0; left:0; right:0; height:%dpx; background:#FFF7EC; display:flex;
+  align-items:center; justify-content:space-between; padding:0 72px; font-size:34px; font-weight:700; color:#8A6F5A; }
+.note { color:#2B1D14; }""" % (PANEL_H, 1920 - PANEL_H - VIDEO_H)
+
+
+def _panel_html(index: int, total: int, domain: str, heading: str, note: str) -> str:
+    import render
+
+    return f"""<!doctype html><html><head><meta charset="utf-8">{_FONT}<style>{_PANEL_CSS}</style></head><body>
+<div class="top"><span class="num">{index:02d}<small>/{total:02d}</small></span><span class="dom">{render.escape(domain)}</span>
+<h1>{render._lines(heading)}</h1></div>
+<div class="bottom"><span class="note">{render.escape(note)}</span><span>@chipmunk.news.kr</span></div></body></html>"""
+
+
+def _hook_html(title: str, tag: str) -> str:
+    import render
+
+    return f"""<!doctype html><html><head><meta charset="utf-8">{_FONT}<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ width:1080px; height:1920px; background:transparent; font-family:"Pretendard",sans-serif; word-break:keep-all; }}
+.dim {{ position:absolute; inset:0; background:linear-gradient(180deg, rgba(20,12,6,.55), rgba(20,12,6,.82)); }}
+.box {{ position:absolute; left:72px; right:72px; top:640px; }}
+.tag {{ display:inline-block; background:#FFD24A; color:#2B1D14; font-size:40px; font-weight:800; padding:14px 26px; border-radius:16px; }}
+h1 {{ margin-top:34px; color:#fff; font-size:118px; line-height:1.16; font-weight:900; letter-spacing:-4px;
+  text-shadow:0 6px 30px rgba(0,0,0,.4); }}
+</style></head><body><div class="dim"></div><div class="box"><span class="tag">{render.escape(tag)}</span>
+<h1>{render.escape(title)}</h1></div></body></html>"""
+
+
+def make_tools_reel(card: dict, card_dir: Path, out: Path | None = None, bgm: Path | None = None) -> Path:
+    """AI 사이트 모음용 움직이는 릴스 (사이트 스크롤 녹화 + 큰 글씨)."""
+    import json
+
+    import render
+
+    out = out or card_dir / "reels.mp4"
+    work = card_dir / "motion"
+    work.mkdir(exist_ok=True)
+    slides = card["slides"]
+    total = len(slides)
+
+    # 1) 사이트마다 스크롤 녹화 (한 번 녹화한 건 재사용)
+    clips = []
+    for i, s in enumerate(slides, 1):
+        meta = work / f"site_{i}.json"
+        if meta.exists() and Path(json.loads(meta.read_text())["video"]).exists():
+            info = json.loads(meta.read_text())
+        else:
+            print(f"   🎥 {s['domain']} 화면 녹화 중...")
+            video, offset = render.record_site(s["url"], work / f"rec_{i}", 1080, VIDEO_H, SITE_SEC + 0.3)
+            info = {"video": str(video), "offset": offset}
+            meta.write_text(json.dumps(info))
+        clips.append(info)
+
+    # 2) 글씨 판 (위: 번호·주소·큰 글씨, 아래: 작은 글씨·계정) + 첫 화면 훅
+    for i, s in enumerate(slides, 1):
+        render.shoot_png(_panel_html(i, total, s["domain"], s["heading"], s["body"]), work / f"panel_{i}.png", 1080, 1920)
+    title = checker_plain(card["hook_title"])
+    render.shoot_png(_hook_html(title, "🔖 저장해두세요"), work / "hook.png", 1080, 1920)
+
+    # 3) 장면마다 mp4로 만든 뒤 이어 붙인다
+    def seg(path: Path, clip: dict, panel: Path, sec: float, start: float = 0.0, blur: bool = False) -> None:
+        vid = (f"[0:v]trim=start={clip['offset'] + start:.2f}:duration={sec:.2f},setpts=PTS-STARTPTS,"
+               f"scale=1080:{VIDEO_H},fps=30")
+        if blur:  # 첫 화면: 사이트가 움직이는 게 비치도록 흐리게만
+            vid += f",scale=1080:1920,boxblur=18:2[v];color=c=0x140C06:s=1080x1920:d={sec:.2f}[bg];[bg][v]overlay=0:0[b]"
+        else:
+            vid += f"[v];color=c=0xFFF7EC:s=1080x1920:d={sec:.2f}[bg];[bg][v]overlay=0:{PANEL_H}[b]"
+        filt = vid + ";[1:v]format=rgba,fade=t=in:st=0:d=0.15:alpha=1[p];[b][p]overlay=0:0,format=yuv420p[o]"
+        subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-i", clip["video"], "-loop", "1", "-t", f"{sec:.2f}",
+                        "-i", str(panel), "-filter_complex", filt, "-map", "[o]", "-t", f"{sec:.2f}", "-r", "30",
+                        "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", str(path)],
+                       check=True)
+
+    parts = [work / "seg_0.mp4"]
+    seg(parts[0], clips[0], work / "hook.png", HOOK_SEC, blur=True)
+    for i, clip in enumerate(clips, 1):
+        p = work / f"seg_{i}.mp4"
+        seg(p, clip, work / f"panel_{i}.png", SITE_SEC)
+        parts.append(p)
+    listing = work / "parts.txt"
+    listing.write_text("".join(f"file '{p.resolve().as_posix()}'\n" for p in parts), encoding="utf-8")
+    length = HOOK_SEC + SITE_SEC * len(clips)
+
+    # 4) 배경음악 (기존 릴스와 같은 방식)
+    bgms = sorted(BGM_DIR.glob("*.mp3")) if BGM_DIR.exists() else []
+    args = [FFMPEG, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(listing)]
+    if bgms:
+        bgm = bgm or random.choice(bgms)
+        args += ["-stream_loop", "-1", "-i", str(bgm), "-filter_complex",
+                 f"[1:a]atrim=0:{length:.2f},afade=t=in:d=0.3,afade=t=out:st={length - 0.8:.2f}:d=0.8,"
+                 "loudnorm=I=-15:TP=-1.5:LRA=11,aresample=44100[a]",
+                 "-map", "0:v", "-map", "[a]", "-c:a", "aac", "-b:a", "192k"]
+        print(f"   🎵 배경음악: {bgm.name}")
+    args += ["-c:v", "copy", "-t", f"{length:.2f}", "-movflags", "+faststart", str(out)]
+    subprocess.run(args, check=True)
+    print(f"   🎬 {out} ({length:.1f}초, 움직이는 릴스)")
+    return out
+
+
+def checker_plain(text: str) -> str:
+    import checker
+
+    return checker.EMOJI.sub("", checker.plain(text)).strip()
+
+
 def make_story_image(card_dir: Path) -> Path:
     """스토리용 세로 사진(1080x1920): 릴스 첫 장면처럼 흐린 표지를 배경에 깔고 카드를 가운데에."""
     cover = card_dir / "01.jpg"
