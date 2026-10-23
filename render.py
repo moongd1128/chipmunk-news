@@ -133,8 +133,10 @@ class _Shooter:
     def shoot_site(self, url: str, path: Path) -> str:
         return self._pool.submit(self._shoot_site, url, path).result()
 
-    def _record_site(self, url: str, out_dir: Path, width: int, height: int, seconds: float) -> tuple[Path, float]:
-        """사이트를 열고 위→아래로 천천히 스크롤하는 모습을 녹화한다. (영상 파일, 스크롤 시작 시각)"""
+    def _record_site(self, url: str, out_dir: Path, width: int, height: int, seconds: float,
+                     focus: str = "") -> tuple[Path, float]:
+        """사이트를 열고, 보여줄 곳(focus 문구)까지 천천히 스크롤해서 멈추는 모습을 녹화한다.
+        (영상 파일, 스크롤 시작 시각)"""
         import time
 
         self._ensure_page()
@@ -152,22 +154,44 @@ class _Shooter:
             page.add_style_tag(content="[id*=cookie i],[class*=cookie i],[id*=consent i],[class*=consent i],"
                                        "[aria-label*=cookie i]{display:none!important}")
             page.wait_for_timeout(200)
+            found = bool(focus) and page.evaluate(_FIND_FOCUS, focus)
+            page.mouse.move(width / 2, height / 2)
+            if found:  # 많이 내려가야 하면, 녹화에 쓰는 구간 전에 미리 근처까지 가 둔다 (빨리 휙 내리는 장면이 안 나오게)
+                for _ in range(40):
+                    far = page.evaluate("window.__focusEl.getBoundingClientRect().top") - height * 0.75
+                    if far < 10:
+                        break
+                    page.mouse.wheel(0, min(far, 600))
+                    page.wait_for_timeout(60)
+                page.wait_for_timeout(700)  # 부드러운 스크롤 효과가 멈출 때까지
             offset = time.time() - started
             # 사람처럼 마우스 휠로 내린다 (자체 스크롤을 쓰는 사이트는 프로그램 스크롤이 안 먹어서)
-            # 첫 프레임부터 움직이게: 처음엔 빠르게, 점점 천천히
-            page.mouse.move(width / 2, height / 2)
-            steps = int(seconds * 30)
-            for k in range(steps):
-                page.mouse.wheel(0, height * 2.2 * (1 - k / steps) / steps)
+            # 보여줄 곳이 화면 위쪽 1/4에 올 때까지 천천히 다가가고(멀수록 조금 빠르게), 도착하면 멈춰서 보여준다.
+            # 못 찾으면 첫 화면을 살짝만 내린다 (의미 없이 빨리 내리지 않게)
+            moved, deadline = 0.0, time.time() + seconds * 0.6
+            while time.time() < deadline:
+                if found:
+                    left = page.evaluate("window.__focusEl.getBoundingClientRect().top") - height * 0.22
+                else:
+                    left = height * 0.25 - moved
+                if left < 6:
+                    break
+                step = min(left * 0.09 + 3, 38)
+                page.mouse.wheel(0, step)
+                moved += step
                 page.wait_for_timeout(1000 / 30)
-            page.wait_for_timeout(300)
+            page.wait_for_timeout(max(0.0, offset + seconds + 0.3 - (time.time() - started)) * 1000)
         finally:
             video = page.video
+            tail = time.time() - started - offset  # 스크롤 시작 ~ 녹화 끝
             ctx.close()
-        return Path(video.path()), offset
+        # 녹화 영상의 시계는 실제 시계와 어긋날 수 있어서(첫 화면이 늦게 뜨면 앞부분이 빠짐),
+        # 시작 시각이 아니라 '끝에서 몇 초 전'으로 돌려준다 → reels.py가 영상 길이에서 빼서 자른다
+        return Path(video.path()), tail
 
-    def record_site(self, url: str, out_dir: Path, width: int, height: int, seconds: float) -> tuple[Path, float]:
-        return self._pool.submit(self._record_site, url, out_dir, width, height, seconds).result()
+    def record_site(self, url: str, out_dir: Path, width: int, height: int, seconds: float,
+                    focus: str = "") -> tuple[Path, float]:
+        return self._pool.submit(self._record_site, url, out_dir, width, height, seconds, focus).result()
 
     def _shoot_png(self, html: str, path: Path, width: int, height: int) -> None:
         """투명 배경 PNG로 찍는다 (릴스 위에 얹을 글씨 판)."""
@@ -210,9 +234,30 @@ def shoot_site(url: str, path: Path) -> str:
     return _shooter.shoot_site(url, path)
 
 
-def record_site(url: str, out_dir: Path, width: int, height: int, seconds: float) -> tuple[Path, float]:
-    """사이트를 스크롤하는 모습을 녹화한다 (움직이는 릴스용). (영상 파일, 스크롤 시작 시각)"""
-    return _shooter.record_site(url, out_dir, width, height, seconds)
+def record_site(url: str, out_dir: Path, width: int, height: int, seconds: float,
+                focus: str = "") -> tuple[Path, float]:
+    """보여줄 곳(focus)까지 스크롤하는 모습을 녹화한다 (움직이는 릴스용).
+    (영상 파일, 스크롤 시작부터 녹화 끝까지 걸린 초)"""
+    return _shooter.record_site(url, out_dir, width, height, seconds, focus)
+
+
+# 사이트에서 focus 문구가 들어 있는 글자를 찾는다 (못 찾으면 앞 단어 몇 개로 다시)
+_FIND_FOCUS = """(phrase) => {
+  const words = phrase.toLowerCase().replace(/\\s+/g, ' ').trim().split(' ');
+  for (const n of [words.length, 4, 3, 2]) {
+    if (n > words.length) continue;
+    const p = words.slice(0, n).join(' ');
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let t;
+    while ((t = w.nextNode())) {
+      const el = t.parentElement;
+      if (!el || !t.textContent.toLowerCase().replace(/\\s+/g, ' ').includes(p)) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0 && r.top > 80) { window.__focusEl = el; return true; }
+    }
+  }
+  return false;
+}"""
 
 
 def shoot_png(html: str, path: Path, width: int, height: int) -> None:

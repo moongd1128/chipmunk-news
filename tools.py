@@ -141,6 +141,7 @@ def to_card(model, sites: list[dict]) -> dict:
         s = sites[k]
         slides.append({"heading": it["heading"], "body": it["note"], "bad": "", "good": "",
                        "site_index": k, "site": it["name"] or s["name"], "domain": s["domain"],
+                       "focus": it.get("focus", ""),
                        "url": s["url"], "shot": s["shot"]})
     stamp = date.today().strftime("%Y.%m")
     caption = data["caption"]
@@ -154,7 +155,8 @@ def to_card(model, sites: list[dict]) -> dict:
 
 def model_items(card: dict) -> list[dict]:
     """고쳐 쓰기(revise)할 때 AI에게 보여줄 원래 모양(items)."""
-    return [{"site": s["site_index"], "name": s["site"], "heading": s["heading"], "note": s["body"]}
+    return [{"site": s["site_index"], "name": s["site"], "heading": s["heading"], "note": s["body"],
+             "focus": s.get("focus", "")}
             for s in card["slides"]]
 
 

@@ -103,6 +103,7 @@ class ToolItem(BaseModel):
     name: str     # 사이트 이름 (영어 그대로, 예: "Poe")
     heading: str  # 이 사이트로 얻는 것 (2줄, 줄바꿈 \n, 핵심 단어 1개 **강조**)
     note: str     # 솔직한 한 줄 (무료 범위·제한 등, 사이트 글에 근거가 있는 것만)
+    focus: str = ""  # 릴스에서 스크롤해 보여줄 곳: 사이트 글에 실제로 있는 영어 문구 그대로 (3~6단어)
 
 
 class ToolsCard(BaseModel):
@@ -479,6 +480,9 @@ def write_tools_card(sites: list[dict]) -> ToolsCard:
     핵심 단어 1개만 **별표 두 개**로 감싸 (카드에서 주황색으로 강조돼)
     말하듯이 끝내. "~ 지원", "~ 제공"처럼 명사로 끊지 마
     (예: "쓸 만한 **도구**가\\n한곳에 모였다", "유명 **AI 모델**을\\n한곳에서 써보기", "올린 자료가\\n**퀴즈**로 바뀐다")
+  - focus: 릴스에서 이 사이트 화면을 스크롤해서 **멈출 곳**. heading이 말하는 기능을 보여주는 부분의
+    문구를 사이트 글에서 **그대로 복사** (영어 원문 3~6단어, 예: "live voice translation", "Turn your notes into quizzes")
+    사이트 맨 위 큰 제목 말고, 그 기능을 설명하는 부분의 문구로
   - note: 솔직한 한 줄 (30자 이내). 무료 범위·제한·필요한 것 (예: "무료 플랜은 하루 사용량 제한이 있어요", "로그인·가입 없이 바로 써요")
 - takeaway: 마지막 장 한줄 정리 (30자 이내, 예: "저장해두고 필요할 때 하나씩 꺼내 쓰세요")
 - share_target: 이걸 보내주고 싶은 사람 (12자 이내, 예: "과제하는 친구")
@@ -502,6 +506,23 @@ def write_tools_card(sites: list[dict]) -> ToolsCard:
 사이트 목록:
 {listing}"""
     return _generate(prompt, ToolsCard, think=True)
+
+
+class Focus(BaseModel):
+    phrases: list[str]  # 사이트마다 하나씩, 순서대로
+
+
+def pick_focus(card: dict) -> list[str]:
+    """예전 원고(focus 없음)용: 사이트마다 릴스에서 멈춰 보여줄 문구를 사이트 글에서 고른다."""
+    listing = "\n\n".join(
+        f"[{i}] {s['domain']} — 카드 문구: {s['heading'].replace(chr(10), ' ')}\n사이트 글:\n"
+        + next((x["page_text"][:2000] for x in card["sites"] if x["domain"] == s["domain"]), "")
+        for i, s in enumerate(card["slides"]))
+    prompt = f"""아래 사이트마다, 카드 문구가 말하는 기능을 가장 잘 보여주는 부분의 문구를 사이트 글에서 **그대로 복사**해줘.
+영어 원문 3~6단어. 사이트 맨 위 큰 제목 말고, 그 기능을 설명하는 부분. 사이트 순서대로 하나씩.
+
+{listing}"""
+    return _generate(prompt, Focus).phrases
 
 
 def _generate_card(prompt: str, think: bool = True) -> CardNews:

@@ -9,6 +9,7 @@
 - assets/bgm 폴더에 mp3를 넣어두면 그중 하나를 골라 배경음악으로 깐다 (없으면 음악 없이)
 """
 import random
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -95,7 +96,7 @@ def make_reel(card_dir: Path, out: Path | None = None, bgm: Path | None = None) 
 # 첫 1초는 표지 문구(훅)를 크게, 그다음 사이트마다 짧게 → 10초 안팎
 
 HOOK_SEC = 1.1      # 첫 화면: 표지 문구
-SITE_SEC = 1.9      # 사이트 하나
+SITE_SEC = 2.3      # 사이트 하나 (보여줄 곳까지 천천히 내려가서 잠깐 멈춤)
 PANEL_H = 600       # 위쪽 글씨 판 높이
 VIDEO_H = 1180      # 가운데 사이트 녹화 높이
 _FONT = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">'
@@ -149,16 +150,22 @@ def make_tools_reel(card: dict, card_dir: Path, out: Path | None = None, bgm: Pa
     slides = card["slides"]
     total = len(slides)
 
-    # 1) 사이트마다 스크롤 녹화 (한 번 녹화한 건 재사용)
+    # 1) 사이트마다 보여줄 곳(focus)까지 스크롤 녹화 (한 번 녹화한 건 재사용)
+    if any(not s.get("focus") for s in slides):  # 예전 원고엔 없어서 AI에게 사이트 글에서 고르게 한다
+        import writer
+
+        for s, f in zip(slides, writer.pick_focus(card)):
+            s["focus"] = s.get("focus") or f
     clips = []
     for i, s in enumerate(slides, 1):
         meta = work / f"site_{i}.json"
         if meta.exists() and Path(json.loads(meta.read_text())["video"]).exists():
             info = json.loads(meta.read_text())
         else:
-            print(f"   🎥 {s['domain']} 화면 녹화 중...")
-            video, offset = render.record_site(s["url"], work / f"rec_{i}", 1080, VIDEO_H, SITE_SEC + 0.3)
-            info = {"video": str(video), "offset": offset}
+            print(f"   🎥 {s['domain']} 화면 녹화 중... (보여줄 곳: {s.get('focus') or '없음'})")
+            video, tail = render.record_site(s["url"], work / f"rec_{i}", 1080, VIDEO_H, SITE_SEC, s.get("focus", ""))
+            # 스크롤이 시작된 곳 = 영상 길이 - (스크롤 시작~끝)
+            info = {"video": str(video), "offset": max(0.0, _duration(video) - tail)}
             meta.write_text(json.dumps(info))
         clips.append(info)
 
@@ -206,6 +213,13 @@ def make_tools_reel(card: dict, card_dir: Path, out: Path | None = None, bgm: Pa
     subprocess.run(args, check=True)
     print(f"   🎬 {out} ({length:.1f}초, 움직이는 릴스)")
     return out
+
+
+def _duration(video: Path) -> float:
+    """영상 길이(초)."""
+    r = subprocess.run([FFMPEG, "-i", str(video)], capture_output=True, text=True)
+    h, m, s = re.search(r"Duration: (\d+):(\d+):([\d.]+)", r.stderr).groups()
+    return int(h) * 3600 + int(m) * 60 + float(s)
 
 
 def checker_plain(text: str) -> str:
