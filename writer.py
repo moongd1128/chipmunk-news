@@ -60,16 +60,25 @@ CTA_LINES = f"""  ✔️ 도움 됐다면 '좋아요'
   {FOLLOW_LINE}"""
 
 # 표지 제목 말투 (뉴스·꿀팁 공통)
-TITLE_WORDING = """  제목의 핵심: **방법(답)을 제목에서 다 말하지 마.** 방법을 알면 사람들이 넘겨보지 않아.
-    대신 독자가 **얻는 결과·혜택**이나 **궁금증**을 앞세우고, 방법은 넘겨서 보게 해
-    ❌ "옷 사기 전에 AI로 입어보기" (방법을 다 알려줌 → "아 합성하는 거구나" 하고 지나감)
-    ⭕ "나랑 어울리는 옷 찾는 법", "옷 고를 때 실패 안 하는 법" (결과만 약속 → "어떻게?" 하고 넘겨봄)
-    ❌ "챗GPT 대화에 잠금 거는 기능" → ⭕ "남한테 폰 빌려줄 때 꼭 해야 할 것"
-  제목 말투: 반말 OK ("~했어?", "~한다고?", "~하는 법"). 본문이 존댓말이어도 제목은 반말로 써도 돼
-  제목 단어: 인스타를 쓰는 평범한 일반인이 한 번에 알아듣는 쉬운 말로만.
-    업계 용어·외래어·기능 이름을 그대로 쓰지 말고 무엇을 하는지로 풀어 써
-    (예: "가상 피팅" → "옷 사기 전에 AI로 입어보기", "멀티모달" → "사진도 알아보는 AI",
-     "에이전트" → "알아서 일하는 AI", "API 가격 인하" → "AI 쓰는 값이 반으로")"""
+TITLE_WORDING = """  제목은 '이 게시물에 뭐가 들었는지'가 아니라 **보는 사람이 갖고 싶은 것, 또는 지금 겪는 '내' 문제**를 말해야 해.
+  (2026-10-23 사용자 피드백: 내용을 설명하는 제목은 단조롭고 재미없어서 아무도 안 멈춘다)
+    ❌ 내용 설명: "야근 줄여주는 AI 직원 6명", "앤트로픽이 밝힌 'AI 티 나는 디자인' 5가지", "엑셀 몰라도 되는 AI 문장 5개"
+    ⭕ 갖고 싶은 결과·내 문제: "AI로 칼퇴하는 법", "나 대신 AI 야근시키는 법", "내 결과물이 AI 티 나는 이유",
+       "앤트로픽이 밝힌 AI 티 안 나게 하는 법", "엑셀 하나도 몰라도 고수 되는 AI 문장 5개"
+  사람을 멈추게 하는 장치 (후보마다 다른 장치를 써. 그대로 베끼지 말고 느낌을 살려):
+    1) 누구나 탐내는 결과 한 단어: 칼퇴·퇴근·고수·인정·연봉 → "AI로 칼퇴하는 법"
+    2) 역할 뒤집기·재밌는 장면: "나 대신 AI 야근시키는 법"
+    3) 신분 변화(0 → 고수): "엑셀 하나도 몰라도 고수 되는 법"
+    4) 내 문제 진단(~하는 이유): "내 결과물이 AI 티 나는 이유", "내 보고서만 늘 반려되는 이유"
+    5) 콕 집어 부르기: "수식 검색에만 30분 쓰는 당신을 위한 AI 문장 5개"
+    6) 큰 숫자 약속: "업무 효율 50배 올리는 법", "엑셀 100% 쓰는 법"
+    7) 권위·비밀: "앤트로픽이 밝힌 ~", "일 잘하는 사람만 몰래 쓰는 ~"
+    8) 뒤처지는 느낌: "아직도 ~ 손으로 해?", "모르면 나만 손해인 ~"
+  제목 말투: 반말 OK ("~하는 법", "~한다고?"). 회사에서 실제로 쓰는 말(칼퇴·야근·반려·팀장님·밤티·고수)로 짧게.
+    핵심 단어는 앞쪽 10자 안에. 기능 이름·업계 용어·딱딱한 말(기능 소개, 활용 방안, 지원)은 쓰지 마
+  방법(답)은 제목에서 다 말하지 마. 결과만 약속하고 방법은 넘겨서 보게 해
+    ❌ "옷 사기 전에 AI로 입어보기" (방법을 다 알려줌) → ⭕ "옷 고를 때 실패 안 하는 법"
+  '무엇이 들었는지'(직원 6명, 문장 5개, 스킬 4개)는 부제가 맡아. 제목에 숫자를 넣는다면 결과·문제와 함께"""
 
 
 # 2번째 장 = 두 번째 표지 (뉴스·꿀팁 공통)
@@ -583,6 +592,84 @@ def pick_scenes(slides: list[dict], tiles: list[list[Path]]) -> list[int]:
         print(f"   👀 {slides[i]['domain']}: 구간 {j + 1}/{len(ts)} ({why})")
         picks.append(j)
     return picks
+
+
+class TitleIdea(BaseModel):
+    text: str    # 제목 (22자 이내)
+    device: str  # 쓴 장치 번호와 이름 (예: "1 탐내는 결과")
+
+
+class TitleIdeas(BaseModel):
+    ideas: list[TitleIdea]
+
+
+class TitleRank(BaseModel):
+    order: list[int]  # 멈추고 싶은 순서대로 후보 번호
+
+
+TITLE_CANDIDATES = 8  # 한 번에 뽑는 제목 후보 수
+TITLE_KEEP = 5        # 텔레그램 [✏️ 다른 제목]으로 넘겨 볼 후보 수
+
+
+def _brief(card: dict) -> str:
+    """제목을 지을 때 AI에게 보여줄 원고 요약."""
+    slides = "\n".join(f"- {checker.plain(s['heading'])}: {checker.plain(s['body']).replace(chr(10), ' ')}"
+                       + (f" (⭕ {s['good'].replace(chr(10), ' ')})" if s.get("good") else "")
+                       for s in card["slides"])
+    return (f"종류: {({'tip': '꿀팁', 'tools': 'AI 사이트 모음', 'news': '뉴스'}).get(card.get('kind'), '뉴스')}\n"
+            f"부제: {card.get('subtitle', '')}\n누가 저장할까: {card.get('save_when', '')} / "
+            f"누구에게 보낼까: {card.get('share_target', '')}\n캡션 첫 줄: {card.get('caption', '').split(chr(10))[0]}\n"
+            f"내용:\n{slides}")
+
+
+def make_titles(card: dict) -> list[str]:
+    """표지 제목만 따로 공들여 짓는다: 장치가 다른 후보 8개 → 독자 입장의 AI가 순위 → 장치가 겹치지 않게 5개.
+    (원고와 같이 지으면 내용을 설명하는 밋밋한 제목이 나오기 쉬워서 따로 뽑는다)"""
+    ideas = _generate(f"""{PERSONA}
+
+아래 카드뉴스의 **표지 제목 후보 {TITLE_CANDIDATES}개**를 지어줘. 각 후보는 22자 이내, 서로 다른 장치를 써.
+{TITLE_WORDING}
+device에는 쓴 장치 번호와 이름을 적어 (예: "4 내 문제 진단").
+원고에 없는 효과·숫자는 지어내지 마. 숫자를 쓰면 원고에 있는 개수와 맞춰.
+
+{_brief(card)}""", TitleIdeas, think=True).ideas
+    seen, ok = set(), []
+    for i in ideas:  # 너무 길거나 겹치는 건 코드로 뺀다
+        t = checker.plain(i.text).strip()
+        if 4 <= len(checker.EMOJI.sub("", t).strip()) <= 22 and t not in seen:
+            seen.add(t)
+            ok.append(TitleIdea(text=t, device=i.device))
+    if not ok:
+        return []
+    listing = "\n".join(f"[{k}] {i.text}" for k, i in enumerate(ok))
+    order = _generate(f"""너는 퇴근길 지하철에서 인스타 피드를 휙휙 넘기는 한국 20~40대 직장인이야.
+아래 제목 중에서 **0.5초 만에 손가락이 멈추고 눌러 보고 싶은 순서대로** 번호를 줄 세워줘.
+기준: 내 얘기 같은가, 결과가 탐나는가, 궁금해서 못 참겠는가, 안 보면 나만 손해 같은가.
+설명 같거나 뻔하거나 딱딱한 제목은 뒤로.
+
+{listing}""", TitleRank).order
+    ranked = [ok[k] for k in dict.fromkeys(order) if 0 <= k < len(ok)]
+    ranked += [i for i in ok if i not in ranked]
+    top, used = [], set()
+    for i in ranked:  # 위에서부터, 장치가 겹치지 않게 먼저 고르고
+        if i.device.split()[0] not in used:
+            top.append(i)
+            used.add(i.device.split()[0])
+    top += [i for i in ranked if i not in top]  # 모자라면 나머지 순위대로
+    return [i.text for i in top[:TITLE_KEEP]]
+
+
+def apply_titles(card: dict) -> dict:
+    """make_titles 결과를 원고에 넣는다. 실패하면 원래 제목 그대로."""
+    try:
+        titles = make_titles(card)
+    except Exception as e:  # noqa: BLE001 - 제목 다듬기가 안 돼도 원고는 살린다
+        print(f"   ⚠️ 제목 다시 짓기 실패: {e}")
+        return card
+    if titles:
+        print(f"   🏷️ 제목: {' / '.join(titles)}")
+        return {**card, "title_options": titles, "hook_title": titles[0]}
+    return card
 
 
 def _generate_card(prompt: str, think: bool = True) -> CardNews:

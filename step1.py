@@ -29,6 +29,8 @@ def polish(card: dict) -> dict:
     """검사기에 걸린 곳을 AI가 스스로 고치게 한다. 그래도 남으면 warnings에 적어둔다."""
     import writer
 
+    # 표지 제목은 따로 공들여 다시 짓는다 (후보 8개 → 독자 입장 순위 → 장치가 다른 5개)
+    card = checker.fix_names(writer.apply_titles(card))
     for attempt in range(1, MAX_REVISIONS + 1):
         problems = checker.find_problems(card)
         if not problems:

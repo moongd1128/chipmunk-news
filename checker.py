@@ -161,8 +161,8 @@ def find_problems(card: dict) -> list[str]:
         problems.append("표지 제목에 이모지가 2개 이상: 1개까지만")
 
     options = card.get("title_options", [])
-    if len(options) != 3:
-        problems.append(f"제목 후보가 {len(options)}개: 질문형·숫자형·반전형 정확히 3개로")
+    if not 3 <= len(options) <= 5:
+        problems.append(f"제목 후보가 {len(options)}개: 3~5개로")
     for t in options:
         if len(EMOJI.sub("", t).strip()) > 22:
             problems.append(f"제목 후보가 너무 길어요: '{t}' → 22자 이내로")
