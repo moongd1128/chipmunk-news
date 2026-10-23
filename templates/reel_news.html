@@ -7,7 +7,6 @@
 <!--
   뉴스 움직이는 릴스 (1080x1920). reels.make_news_reel이 render(t)를 1/30초마다 불러서 한 장씩 찍는다.
   장면: 훅(표지 사진 + 제목, 사진은 가만히) → 슬라이드마다 [큰 제목 → 본문이 한 줄씩 툭툭] → 그래서 나는?
-  위쪽 진행 막대가 계속 차올라서 화면에 늘 움직임이 있다.
 -->
 <style>
   :root { --bg:#FFF7EC; --ink:#2B1D14; --muted:#8A6F5A; --accent:#F2762E; --soft:#F7E2C8; }
@@ -21,7 +20,6 @@
   .brand { position:absolute; top:84px; left:80px; z-index:5; background:var(--ink); color:#fff; font-size:32px;
     font-weight:700; padding:14px 26px; border-radius:999px; }
   .handle { position:absolute; bottom:70px; right:80px; z-index:5; font-size:32px; font-weight:700; color:var(--muted); }
-  .bar { position:absolute; top:0; left:0; height:14px; background:var(--accent); z-index:6; }
 
   /* 훅: 표지 사진 위에 큰 제목 */
   #hook { padding-bottom:260px; justify-content:flex-end; color:#fff; }
@@ -62,7 +60,6 @@
 </style>
 </head>
 <body>
-<i class="bar" id="bar"></i>
 <span class="brand">🐿️ 칩다람 · AI 뉴스</span>
 <span class="handle">@chipmunk.news.kr</span>
 
@@ -116,7 +113,6 @@ function show(el, k, dy = 36) {
 }
 
 function render(t) {
-  document.getElementById("bar").style.width = (clamp(t / D.length) * 1080) + "px";
   document.querySelectorAll(".scene").forEach(s => s.style.display = "none");
   document.body.classList.toggle("dark", t < T.hook);
   if (t < T.hook) {

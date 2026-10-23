@@ -262,7 +262,7 @@ def make_tip_reel(card: dict, card_dir: Path, out: Path | None = None, bgm: Path
 
 # ---------- 움직이는 릴스: 뉴스 ----------
 # 표지 사진(가만히) 위로 제목 단어가 툭툭 → 장마다 큰 제목 + 본문이 한 줄씩 → 그래서 나는?
-# (templates/reel_news.html의 render(t)를 1/30초마다 찍음, 위쪽 진행 막대가 계속 차올라 늘 움직임이 있음)
+# (templates/reel_news.html의 render(t)를 1/30초마다 찍음)
 NEWS_TIMING = {"hook": 1.6, "beat": 3.0, "outro": 1.8}
 
 
