@@ -76,12 +76,34 @@ def _token() -> str:
     return os.environ["INSTAGRAM_ACCESS_TOKEN"]
 
 
+# 인스타가 '요청이 너무 많다'고 막을 때 오는 오류 번호 (보통 1시간 안에 풀림)
+RATE_LIMIT_CODES = {4, 17, 32, 613}
+
+
 def _ig(method: str, path: str, **params) -> dict:
     resp = requests.request(method, f"{IG}/{path}", params={**params, "access_token": _token()}, timeout=60)
     data = resp.json()
+    usage = resp.headers.get("x-app-usage")
+    if usage and '"call_volume":' in usage and json.loads(usage).get("call_volume", 0) >= 80:
+        print(f"⚠️ 인스타 요청 한도 거의 다 씀: {usage}")
     if "error" in data:
-        raise RuntimeError(f"인스타 API 오류: {data['error'].get('message')}")
+        err = data["error"]
+        if err.get("code") in RATE_LIMIT_CODES:
+            raise RuntimeError("인스타 요청 한도에 잠깐 걸렸어요. 보통 1시간 안에 풀려요. 잠시 뒤 다시 [발행]을 눌러 주세요 "
+                               "(아무것도 올라가지 않았어요)")
+        raise RuntimeError(f"인스타 API 오류: {err.get('message')}")
     return data
+
+
+_USER_ID: str | None = None
+
+
+def user_id() -> str:
+    """내 인스타 계정 번호 (한 번 물어본 뒤로는 기억해 둔다)."""
+    global _USER_ID
+    if _USER_ID is None:
+        _USER_ID = me()["user_id"]
+    return _USER_ID
 
 
 def me() -> dict:
@@ -110,8 +132,10 @@ def refresh_token_if_old() -> None:
     print("🔑 인스타 토큰을 60일 연장했어요")
 
 
-def _wait_ready(container_id: str, what: str = "사진", tries: int = 30, wait: int = 3) -> None:
-    """인스타가 사진(영상)을 다 받아갈 때까지 기다린다."""
+def _wait_ready(container_id: str, what: str = "사진", tries: int = 30, wait: int = 5) -> None:
+    """인스타가 사진(영상)을 다 받아갈 때까지 기다린다.
+    너무 자주 물어보면 인스타 요청 한도에 걸려서, 처음엔 조금 기다렸다가 5초(영상은 10초) 간격으로만 확인한다."""
+    time.sleep(wait)
     for _ in range(tries):
         data = _ig("GET", container_id, fields="status_code,status")
         if data["status_code"] == "FINISHED":
@@ -137,7 +161,7 @@ def publish_carousel(day: str, n: int) -> str:
     if not 2 <= len(images) <= 20:
         raise RuntimeError(f"캐러셀은 2~20장이어야 해요 (지금 {len(images)}장)")
 
-    user_id = me()["user_id"]
+    uid = user_id()
     stamp = int(time.time())
     print(f"📤 사진 {len(images)}장 올리는 중...")
     urls = [upload_public(p, f"{day}/card_{n:02d}/{stamp}_{p.name}") for p in images]
@@ -145,17 +169,17 @@ def publish_carousel(day: str, n: int) -> str:
     print("🧩 캐러셀 조각 만드는 중...")
     children = []
     for url in urls:
-        cid = _ig("POST", f"{user_id}/media", image_url=url, is_carousel_item="true")["id"]
+        cid = _ig("POST", f"{uid}/media", image_url=url, is_carousel_item="true")["id"]
         children.append(cid)
     for cid in children:
         _wait_ready(cid)
 
-    carousel = _ig("POST", f"{user_id}/media", media_type="CAROUSEL",
+    carousel = _ig("POST", f"{uid}/media", media_type="CAROUSEL",
                    children=",".join(children), caption=build_caption(card))["id"]
     _wait_ready(carousel)
 
     print("🚀 발행 중...")
-    media_id = _ig("POST", f"{user_id}/media_publish", creation_id=carousel)["id"]
+    media_id = _ig("POST", f"{uid}/media_publish", creation_id=carousel)["id"]
     link = _ig("GET", media_id, fields="permalink").get("permalink", "")
 
     card["published"] = {"media_id": media_id, "permalink": link, "at": int(time.time())}
@@ -191,16 +215,16 @@ def _prepare_reel(day: str, n: int) -> str:
             print(f"⚠️ 움직이는 릴스 실패 → 카드 릴스로 대신: {e}")
     video = video or reels.make_reel(card_dir)
 
-    user_id = me()["user_id"]
+    uid = user_id()
     print("📤 릴스 영상 올리는 중...")
     stamp = int(time.time())
     url = upload_public(video, f"{day}/card_{n:02d}/{stamp}_reels.mp4", "video/mp4")
     # 썸네일은 첫 장면이 아니라 표지 카드로 따로 정한다 (첫 장면은 글씨가 나타나는 중이라 흐리거나 비어 보여서)
     cover = upload_public(reels.make_story_image(card_dir), f"{day}/card_{n:02d}/{stamp}_reel_cover.jpg")
-    cid = _ig("POST", f"{user_id}/media", media_type="REELS", video_url=url, cover_url=cover,
+    cid = _ig("POST", f"{uid}/media", media_type="REELS", video_url=url, cover_url=cover,
               caption=build_caption(cards[n - 1]), share_to_feed=str(REEL_SHARE_TO_FEED).lower())["id"]
     print("⏳ 인스타가 영상 처리하는 중... (1~3분)")
-    _wait_ready(cid, "영상", tries=60, wait=5)
+    _wait_ready(cid, "영상", tries=40, wait=10)
     return cid
 
 
@@ -209,7 +233,7 @@ def publish_reel(day: str, n: int) -> str:
     refresh_token_if_old()
     cid = _prepare_reel(day, n)
     print("🚀 릴스 발행 중...")
-    media_id = _ig("POST", f"{me()['user_id']}/media_publish", creation_id=cid)["id"]
+    media_id = _ig("POST", f"{user_id()}/media_publish", creation_id=cid)["id"]
     link = _ig("GET", media_id, fields="permalink").get("permalink", "")
 
     cards_file = Path("output") / day / "cards.json"
@@ -226,7 +250,7 @@ def _prepare_story(day: str, n: int) -> str:
 
     image = reels.make_story_image(Path("output") / day / f"card_{n:02d}")
     url = upload_public(image, f"{day}/card_{n:02d}/{int(time.time())}_story.jpg")
-    cid = _ig("POST", f"{me()['user_id']}/media", media_type="STORIES", image_url=url)["id"]
+    cid = _ig("POST", f"{user_id()}/media", media_type="STORIES", image_url=url)["id"]
     _wait_ready(cid, "스토리 사진")
     return cid
 
@@ -235,7 +259,7 @@ def publish_story(day: str, n: int) -> str:
     """그날 n번 카드의 표지를 스토리로 올린다. (API로 올린 스토리엔 '게시물 보기' 스티커를 못 붙여요)"""
     refresh_token_if_old()
     print("📱 스토리 올리는 중...")
-    media_id = _ig("POST", f"{me()['user_id']}/media_publish", creation_id=_prepare_story(day, n))["id"]
+    media_id = _ig("POST", f"{user_id()}/media_publish", creation_id=_prepare_story(day, n))["id"]
     cards_file = Path("output") / day / "cards.json"
     cards = json.loads(cards_file.read_text(encoding="utf-8"))
     cards[n - 1]["story"] = {"media_id": media_id, "at": int(time.time())}
