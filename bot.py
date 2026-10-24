@@ -372,23 +372,71 @@ def build_app() -> Application:
     return app
 
 
+async def process_queue(app: Application) -> int:
+    """문지기 대기열에 쌓인 버튼·명령을 누른 순서대로 처리한다. 처리한 개수."""
+    import tgqueue
+
+    items = await asyncio.to_thread(tgqueue.pending)
+    for name, data in items:
+        try:
+            await app.process_update(Update.de_json(data, app.bot))
+        except Exception as e:  # noqa: BLE001 - 하나가 실패해도 나머지는 처리
+            print(f"⚠️ 버튼 처리 오류: {e}", flush=True)
+        finally:  # 실패한 것도 지운다 (같은 버튼을 계속 다시 시도하며 막히지 않게)
+            await asyncio.to_thread(tgqueue.done, [name])
+    return len(items)
+
+
+async def _heartbeat_loop() -> None:
+    """빠른 모드 동안 20초마다 '깨어 있음' 표시 (발행처럼 오래 걸리는 버튼을 처리하는 중에도)."""
+    import tgqueue
+
+    while True:
+        try:
+            await asyncio.to_thread(tgqueue.heartbeat)
+        except Exception as e:  # noqa: BLE001
+            print(f"⚠️ 깨어 있음 표시 실패: {e}", flush=True)
+        await asyncio.sleep(20)
+
+
 async def run_live(minutes: int) -> None:
-    """정해진 시간 동안만 봇을 켜두는 빠른 모드 (GitHub Actions용).
-    카드가 막 도착했거나 버튼을 누르기 시작했을 때, 그동안은 버튼이 2~3초에 반응하게."""
+    """정해진 시간 동안만 봇을 켜두는 빠른 모드 (GitHub Actions·PC).
+    카드가 막 도착했거나 버튼을 누르기 시작했을 때, 그동안은 버튼이 2~3초에 반응하게.
+    문지기(webhook)가 켜져 있으면 대기열을 2초마다 보고, 꺼져 있으면 예전처럼 텔레그램에 직접 물어본다."""
+    import time
+
+    import tgqueue
+
     global SYNC_EACH_CHANGE
     SYNC_EACH_CHANGE = True
     app = build_app()
     await app.initialize()
     await app.start()
-    await app.updater.start_polling(allowed_updates=["message", "callback_query"])
-    print(f"⚡ {minutes}분 동안 빠른 모드로 버튼 처리 중...", flush=True)
+    queued = await asyncio.to_thread(tgqueue.webhook_on)
+    beat = None
+    if queued:
+        beat = asyncio.create_task(_heartbeat_loop())
+    else:
+        await app.updater.start_polling(allowed_updates=["message", "callback_query"])
+    print(f"⚡ {minutes}분 동안 빠른 모드로 버튼 처리 중... ({'문지기 대기열' if queued else '텔레그램 직접'})", flush=True)
     try:
-        await asyncio.sleep(minutes * 60)
+        if queued:
+            end = time.time() + minutes * 60
+            while time.time() < end:
+                await process_queue(app)
+                await asyncio.sleep(2)
+        else:
+            await asyncio.sleep(minutes * 60)
     finally:
-        await app.updater.stop()
+        if queued:
+            beat.cancel()
+            await asyncio.to_thread(tgqueue.sleep)
+            await process_queue(app)  # 표시를 지우는 사이에 눌린 것까지 마저
+        else:
+            await app.updater.stop()
         await app.stop()
         await app.shutdown()
-    print("⚡ 빠른 모드 끝 (이후 버튼은 GitHub이 몇 분마다 확인)", flush=True)
+    print("⚡ 빠른 모드 끝 (이후 버튼은 문지기가 받아서 GitHub을 바로 깨워요)", flush=True)
 
 
 def main() -> None:
@@ -398,6 +446,12 @@ def main() -> None:
 
     print("☁️ GitHub 쪽 최신 상태 받는 중...")
     state.pull()
+    import tgqueue
+
+    if tgqueue.webhook_on():  # 문지기가 켜져 있으면 대기열에서 꺼내 처리 (끄면 다시 문지기가 GitHub을 깨움)
+        print("🐿️ 칩다람 봇이 켜졌어요 (PC 빠른 모드, 문지기 대기열). 끄려면 Ctrl+C")
+        asyncio.run(run_live(24 * 60))
+        return
     SYNC_EACH_CHANGE = True
     app = build_app()
     print("🐿️ 칩다람 봇이 켜졌어요 (PC 빠른 모드). 끄면 GitHub이 몇 분마다 대신 처리해요. (끄려면 Ctrl+C)")

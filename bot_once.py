@@ -11,15 +11,24 @@ from telegram.error import Conflict
 
 import bot
 import state
+import tgqueue
 
 LIVE_MINUTES = 40  # 버튼을 누르기 시작하면 한동안 바로 반응하게
 
 
 async def process_pending() -> bool | None:
-    """밀린 버튼·명령을 처리한다. PC 봇이 켜져 있으면 None, 처리한 게 있으면 True."""
+    """밀린 버튼·명령을 처리한다. 다른 봇(PC 등)이 켜져 있으면 None, 처리한 게 있으면 True."""
     app = bot.build_app()
     await app.initialize()
     try:
+        if tgqueue.webhook_on():  # 문지기 방식: 대기열에서 꺼낸다
+            if tgqueue.awake_elsewhere():
+                return None
+            n = await bot.process_queue(app)
+            print(f"밀린 버튼·명령 {n}개 처리" if n else "밀린 버튼 없음")
+            if n:
+                state.push()
+            return n > 0
         try:
             updates = await app.bot.get_updates(timeout=0, allowed_updates=["message", "callback_query"])
         except Conflict:
@@ -42,7 +51,7 @@ async def main() -> None:
     state.pull()
     handled = await process_pending()
     if handled is None:
-        print("PC 봇이 켜져 있어서 GitHub은 쉬어요")
+        print("다른 봇(PC나 다른 실행)이 깨어 있어서 GitHub은 쉬어요")
         return
     # 버튼을 누르기 시작했다 = 지금 검수 중 → 한동안 깨어 있어서 다음 버튼은 바로 반응
     if handled or os.environ.get("FORCE_LIVE"):

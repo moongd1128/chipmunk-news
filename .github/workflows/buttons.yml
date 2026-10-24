@@ -31,21 +31,31 @@ jobs:
         id: check
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           GH_TOKEN: ${{ github.token }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.live && '1' || '' }}
         run: |
-          # 버튼 처리나 아침 카드가 이미 돌고 있으면 그쪽이 버튼을 처리하니 텔레그램을 건드리지 않고 쉼
-          # (여기서 텔레그램에 물어보면 깨어 있는 봇의 연결을 끊어서 버튼이 늦어져요)
+          # 버튼 처리나 아침 카드가 이미 돌고 있으면 그쪽이 버튼을 처리하니 쉼 (링크 페이지 갱신은 버튼을 안 보니 빼고 셈)
           busy=$(gh run list -R "$GITHUB_REPOSITORY" -s in_progress --json databaseId,workflowName \
-            --jq "[.[] | select(.databaseId != $GITHUB_RUN_ID)] | length")
+            --jq "[.[] | select(.databaseId != $GITHUB_RUN_ID and .workflowName != \"link page\")] | length")
           if [ "$busy" != "0" ] && [ -z "$FORCE" ]; then echo "다른 실행이 깨어 있어서 쉼"; exit 0; fi
+          # 직접 실행([Run workflow])은 버튼이 없어도 빠른 모드로
+          if [ -n "$FORCE" ]; then echo "has=1" >> "$GITHUB_OUTPUT"; exit 0; fi
+          # 문지기 대기열(Supabase private/queue)에 쌓인 버튼이 있는지
+          base=$(echo "$SUPABASE_URL" | sed -E 's#^(https?://[^/]+).*#\1#')
+          auth=(-H "apikey: $SUPABASE_KEY")
+          case "$SUPABASE_KEY" in eyJ*) auth+=(-H "Authorization: Bearer $SUPABASE_KEY");; esac
+          q=$(curl -s -X POST "$base/storage/v1/object/list/private" "${auth[@]}" -H "Content-Type: application/json" \
+            -d '{"prefix":"queue","limit":100}' | jq '[.[]? | select(.name | startswith("_") | not)] | length')
+          echo "대기열=$q"
+          if [ "${q:-0}" != "0" ]; then echo "has=1" >> "$GITHUB_OUTPUT"; exit 0; fi
+          # 문지기를 안 쓸 때(webhook 꺼짐)는 예전처럼 텔레그램에 직접 물어본다 (켜져 있으면 ok=false라 그냥 넘어감)
           resp=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?timeout=0&limit=1")
           ok=$(echo "$resp" | jq -r '.ok')
           count=$(echo "$resp" | jq -r '.result | length // 0')
           echo "ok=$ok count=$count"
-          # ok=false(409)면 PC 봇이나 다른 빠른 모드가 이미 깨어 있다는 뜻 → 그쪽이 처리하니 쉼
           if [ "$ok" = "true" ] && [ "$count" != "0" ]; then echo "has=1" >> "$GITHUB_OUTPUT"; fi
-          if [ "$ok" = "true" ] && [ -n "$FORCE" ]; then echo "has=1" >> "$GITHUB_OUTPUT"; fi
 
   # 2) 있을 때만 설치하고 처리
   buttons:
