@@ -1,5 +1,6 @@
 """1단계-2: Gemini로 기사 고르기 + 칩다람 카드뉴스 원고 쓰기"""
 import os
+import re
 import time
 from pathlib import Path
 
@@ -90,6 +91,10 @@ TITLE_WORDING = """  제목은 '이 게시물에 뭐가 들었는지'가 아니�
       "아직도 야근해? AI로 칼퇴하는 법 알려줄게" (질문 + 약속을 친구처럼)
     - 내용 개수는 빼고 누가 하는지 분명하게: "내 업무 6가지 다 넘기는 법" → "내 업무 AI한테 다 넘기는 법"
     - 제목에는 이모지를 넣지 마
+  이 계정은 'AI 잘 쓰는 법' 계정이야. 제목에 AI가 꼭 들어갈 필요는 없지만, **AI가 들어가면 더 좋은 주제·때가 많아**
+    (AI로·AI한테·AI 티·챗GPT·제미나이 등). AI가 빠지면 그냥 발표 꿀팁·공부 꿀팁처럼 보이지 않는지 생각해 봐
+    ❌ "내 맘에 쏙 드는 발표 자료 만드는 법" (흔한 발표 꿀팁처럼 보임) → ⭕ "AI 티 안 나게 발표 자료 잘 만드는 법"
+  AI가 뭔가를 만들어 주는 주제(발표 자료·디자인·글·그림·영상·자소서)는 **'AI 티 안 나게'가 강한 각도**야 (사용자가 좋아함). 후보에 넣어 봐
   **제목만 보고 '누구의 무슨 일'인지 바로 떠올라야 해** (2026-10-24 사용자 피드백):
     확실한 타깃(대학생·직장인·유튜버·자영업자·취준생) 또는 구체적인 물건·아픔 키워드(시험 공부·수업 노트·보고서·
     회의록·PPT·엑셀·자소서·썸네일·상세페이지)를 꼭 하나 넣어. '자료·정리·업무·작업·콘텐츠' 같은 막연한 말만으로는 안 돼
@@ -634,6 +639,8 @@ class TitleRank(BaseModel):
 
 
 TITLE_CANDIDATES = 8  # 한 번에 뽑는 제목 후보 수
+# AI가 결과물을 만들어 주는 주제 → 'AI 티 안 나게' 각도 후보가 꼭 있어야
+MAKES_THINGS = re.compile(r"발표|PPT|슬라이드|디자인|그림|이미지|영상|썸네일|자소서|글쓰기|블로그|상세페이지|포스터|로고")
 # 제목의 '확실한 타깃·구체적 키워드'로 인정하지 않는 막연한 말 (이것만 있으면 누구의 무슨 일인지 안 떠오름)
 VAGUE_WORDS = {"자료", "정리", "업무", "작업", "일", "콘텐츠", "효율", "생산성", "방법", "기능", "도구", "AI", "인공지능",
                "결과물", "시간", "채팅", "노트"}
@@ -677,6 +684,21 @@ hook_word에는 제목에 들어간 **확실한 타깃이나 구체적인 키워
         if 4 <= len(t) <= checker.MAX_TITLE and t not in seen:
             seen.add(t)
             ok.append(TitleIdea(text=t, device=i.device, hook_word=hook))
+    # AI가 결과물을 만들어 주는 주제인데 'AI 티' 각도 후보가 하나도 없으면, 그 각도 후보를 더 받아 와서 같이 겨루게 한다
+    # (뽑힐지는 독자 입장 순위가 정함. 억지로 1등 시키지 않음)
+    if MAKES_THINGS.search(_brief(card)) and not any("티" in i.text for i in ok):
+        more = _generate(f"""{PERSONA}
+
+아래 카드뉴스의 표지 제목을 **'AI 티 안 나게' / '내 ~가 AI 티 나는 이유'** 각도로만 3개 지어줘.
+{checker.MAX_TITLE}자 이내, 이모지 없이. 예: "AI 티 안 나게 발표 자료 잘 만드는 법", "내 PPT만 AI 티 나는 이유".
+hook_word에는 제목 속 구체적인 키워드(예: "발표 자료", "PPT")를 그대로.
+
+{_brief(card)}""", TitleIdeas).ideas
+        for i in more:
+            t = checker.EMOJI.sub("", checker.plain(i.text)).replace("️", "").strip()
+            if "티" in t and 4 <= len(t) <= checker.MAX_TITLE and t not in seen:
+                seen.add(t)
+                ok.append(TitleIdea(text=t, device="9 AI 티", hook_word=i.hook_word or ""))
     if not ok:
         return []
     listing = "\n".join(f"[{k}] {i.text}" for k, i in enumerate(ok))
@@ -686,6 +708,7 @@ hook_word에는 제목에 들어간 **확실한 타깃이나 구체적인 키워
 기준: 내 얘기 같은가, 결과가 탐나는가, 궁금해서 못 참겠는가, 안 보면 나만 손해 같은가.
 설명 같거나 뻔하거나 딱딱한 제목은 뒤로.
 결과를 가장 짧고 바로 말하는 제목, 친구가 말하듯 자연스러운 제목을 앞으로 (예: "AI로 칼퇴하는 법").
+이건 'AI 잘 쓰는 법' 계정이야. 흔한 생활·업무 꿀팁처럼 보이는 제목보다 AI를 더 잘 쓰는 느낌이 드는 제목이 보통 더 끌려.
 
 그리고 아래 내용을 보고, broken에 번호를 적어줘:
 - 제목을 보고 들어온 사람이 내용의 어느 장에서 "이거 아닌데?" 하고 나갈 제목 (제목의 약속을 모든 방법이 지켜야 해)
