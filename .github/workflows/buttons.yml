@@ -1,4 +1,4 @@
-# 5분마다: 텔레그램에서 눌린 버튼·명령이 있으면 처리하고, 이어서 20분 동안 빠른 모드 (PC 봇이 켜져 있으면 쉼)
+# 5분마다: 텔레그램에서 눌린 버튼·명령이 있으면 처리하고, 이어서 40분 동안 빠른 모드 (PC 봇이 켜져 있으면 쉼)
 #
 # 누가 깨우나요?
 #   - cron-job.org (외부 알람): 5분마다 정확히 깨워요 (live=false → 눌린 버튼이 있을 때만 일함)
@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       live:
-        description: "버튼이 없어도 20분 빠른 모드로 켜두기"
+        description: "버튼이 없어도 40분 빠른 모드로 켜두기"
         type: boolean
         default: true
 
@@ -52,7 +52,7 @@ jobs:
     needs: check
     if: needs.check.outputs.has == '1'
     runs-on: ubuntu-24.04  # 26으로 바뀌는 중이라 고정
-    timeout-minutes: 40   # 버튼 처리 + 20분 빠른 모드
+    timeout-minutes: 60   # 버튼 처리 + 40분 빠른 모드
     permissions:
       contents: read
       actions: write   # 링크 페이지 갱신(pages.yml)을 깨우려고

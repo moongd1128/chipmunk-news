@@ -71,7 +71,7 @@ def main() -> None:
     asyncio.run(bot.run_live(LIVE_MINUTES))
 
 
-LIVE_MINUTES = 30
+LIVE_MINUTES = 60  # 아침에 몰아서 검수하는 동안 버튼이 바로 반응하게
 
 
 if __name__ == "__main__":

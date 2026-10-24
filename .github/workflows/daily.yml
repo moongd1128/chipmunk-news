@@ -13,7 +13,7 @@ concurrency:
 jobs:
   daily:
     runs-on: ubuntu-24.04  # 26으로 바뀌는 중이라 고정
-    timeout-minutes: 90
+    timeout-minutes: 120  # 카드 만들기(최대 10개) + 60분 빠른 모드
     env:
       TZ: Asia/Seoul
       PYTHONIOENCODING: utf-8

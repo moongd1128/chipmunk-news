@@ -1,4 +1,4 @@
-"""GitHub Actions용: 밀려 있는 텔레그램 버튼·명령을 처리하고, 이어서 20분 동안 빠른 모드로 깨어 있는다
+"""GitHub Actions용: 밀려 있는 텔레그램 버튼·명령을 처리하고, 이어서 40분 동안 빠른 모드로 깨어 있는다
 
 - 몇 분마다 자동 실행: 눌린 버튼이 있을 때만 여기까지 온다
 - 직접 실행([Run workflow], FORCE_LIVE=1): 버튼이 없어도 빠른 모드로 켜둔다
@@ -12,7 +12,7 @@ from telegram.error import Conflict
 import bot
 import state
 
-LIVE_MINUTES = 20
+LIVE_MINUTES = 40  # 버튼을 누르기 시작하면 한동안 바로 반응하게
 
 
 async def process_pending() -> bool | None:
